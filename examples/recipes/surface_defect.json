@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "seed": 2026,
+  "steps": [
+    { "op": "median", "enabled": true, "params": { "radius": 1 } },
+    { "op": "white_balance", "enabled": true, "params": { "strength": 0.8 } },
+    { "op": "contrast", "enabled": true, "params": { "factor": 1.12 } },
+    { "op": "unsharp", "enabled": true, "params": { "amount": 0.75, "radius": 1.2, "threshold": 0.01 } },
+    { "op": "gamma", "enabled": true, "params": { "gamma": 1.05 } },
+    { "op": "crop", "enabled": false, "params": { "x": 8, "y": 8, "width": 84, "height": 84 } }
+  ]
+}
