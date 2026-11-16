@@ -1,6 +1,6 @@
 # figtools
 
-**图像全流程工作台** —— 确定性图像处理内核 + 命令行工具，最终形态见 [设计基线](docs/DESIGN.md)。
+**图像全流程工作台** —— 确定性图像内核 + Qt 桌面工作台 + 命令行工具，最终形态见 [设计基线](docs/DESIGN.md)。
 
 [![CI](https://github.com/liuhonghao/figtools/actions/workflows/ci.yml/badge.svg)](https://github.com/liuhonghao/figtools/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -16,7 +16,8 @@
 | **v0.2** | Qt 6 桌面外壳：分割/并排/结果三视图、schema 驱动的处理链、直方图、导出 | ✅ 可用 |
 | **v0.3** | 标注工作台：矩形/多边形、类别色、COCO/YOLO 导出、标注存读 | ✅ 可用 |
 | **v0.4** | 数据集页：扫描、确定性三分划分、重复检测、快照导出 | ✅ 可用 |
-| v0.5 | Python 训练 worker、ONNX 交接、模型注册表 | 规划中 |
+| **v0.5** | 界面重做：暖纸色主题、自绘图标与控件、标定靶示例图、统一状态消息 | ✅ 可用 |
+| v0.6 | Python 训练 worker、ONNX 交接、模型注册表 | 规划中 |
 | v1.0 | 插件 ABI、批量任务中心、团队模式 | 规划中 |
 
 ![workbench](docs/images/workbench.png)
@@ -72,7 +73,9 @@ cmake --build --preset dev --target figtools_gui
 QT_ROOT=/path/to/Qt/6.8.3/mingw_64 CXX=/path/to/mingw/bin/g++.exe ./scripts/build_gui.sh
 ```
 
-界面能力：拖入图像即加载；左侧处理链由算子 schema 自动生成（增删、上下移、单步禁用）；中间画布支持**分割对比**（拖白色分界线）、**并排对比**、**只看结果**，滚轮缩放、拖动平移；右侧显示属性、直方图与统计；`Ctrl+S` 按原始分辨率导出。
+界面采用暖纸色系（米色底、墨色文字、赤陶色单一强调色），配色、字号、控件与图标集中在 `gui/theme.cpp`，不在各处硬编码。
+
+界面能力：拖入图像即加载；左侧处理链由算子 schema 自动生成（增删、上下移、单步启停）；中间画布支持**分割对比**（拖分界线）、**并排对比**、**只看结果**，滚轮缩放、拖动平移；右侧显示属性、平滑直方图与统计；`Ctrl+S` 按原始分辨率导出。内置示例图是暖色标定靶（西门子星 / 12 级灰阶 / 色块 / 分辨率条），用于直观检验降噪、对比度与锐化。
 
 **标注**页支持矩形拖拽与多边形逐点绘制（双击/回车闭合、Esc 取消）、类别着色、选中后 Delete 删除；标注可存为原生 JSON，也可导出 **COCO**（含 segmentation）或 **YOLO**（归一化 bbox）；还能写成图片旁边的 `.annotations.json`，供数据集页自动收纳。
 

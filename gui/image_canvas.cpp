@@ -3,7 +3,10 @@
 
 #include "image_canvas.hpp"
 
+#include "theme.hpp"
+
 #include <QKeyEvent>
+#include <QLinearGradient>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -22,9 +25,12 @@ constexpr double kMinZoom = 0.05;
 constexpr double kMaxZoom = 16.0;
 constexpr double kDividerHitWidth = 10.0;
 
-QColor kBackground{0xEF, 0xEC, 0xE2};
-QColor kPanel{0x2A, 0x2A, 0x26};
-QColor kAccent{0x18, 0x5F, 0xA5};
+constexpr double kPadding = 24.0;
+
+QColor kFrameBorder{36, 31, 24, 34};
+QColor kChipFill{255, 253, 248, 238};
+QColor kChipBorder{36, 31, 24, 30};
+QColor kChipText{0x3A, 0x34, 0x2B};
 
 }  // namespace
 
@@ -118,7 +124,7 @@ void ImageCanvas::zoomToActualSize() {
   const QRectF viewport = rect();
   const QRectF target = (mode_ == Mode::kSide) ? QRectF(0, 0, viewport.width() / 2.0, viewport.height())
                                                : viewport;
-  const double base = fitScale(after_.size(), target.adjusted(20, 20, -20, -20));
+  const double base = fitScale(after_.size(), target.adjusted(kPadding, kPadding, -kPadding, -kPadding));
   if (base <= 0.0) {
     return;
   }
@@ -162,7 +168,7 @@ QPoint ImageCanvas::toImagePoint(QPoint widget_point) const {
   const QRectF viewport = rect();
   QRectF target = viewport;
   if (mode_ == Mode::kSplit || mode_ == Mode::kResult) {
-    const double base = fitScale(after_.size(), viewport.adjusted(20, 20, -20, -20));
+    const double base = fitScale(after_.size(), viewport.adjusted(kPadding, kPadding, -kPadding, -kPadding));
     const double scale = base * zoom_;
     const QRectF drawn = fittedRect(after_.size(), viewport, scale);
     if (drawn.width() <= 0.0) {
@@ -173,7 +179,7 @@ QPoint ImageCanvas::toImagePoint(QPoint widget_point) const {
     return QPoint(static_cast<int>(fx * after_.width()), static_cast<int>(fy * after_.height()));
   }
   const QRectF left(0, 0, viewport.width() / 2.0, viewport.height());
-  const double base = fitScale(before_.size(), left.adjusted(20, 20, -20, -20));
+  const double base = fitScale(before_.size(), left.adjusted(kPadding, kPadding, -kPadding, -kPadding));
   const double scale = base * zoom_;
   const QRectF drawn = fittedRect(before_.size(), left, scale);
   if (drawn.width() <= 0.0) {
@@ -185,13 +191,23 @@ QPoint ImageCanvas::toImagePoint(QPoint widget_point) const {
 }
 
 void ImageCanvas::drawEmptyState(QPainter& painter) {
-  painter.setPen(QColor(0x8A, 0x8A, 0x7E));
-  QFont font = painter.font();
-  font.setPointSizeF(font.pointSizeF() + 1.0);
-  painter.setFont(font);
-  painter.drawText(rect(), Qt::AlignCenter,
-                   tr("拖入图像，或点击「示例图」开始\n\n"
-                      "拖动画布中间的白色分界线可对比处理前后"));
+  const QRectF box = QRectF(rect()).adjusted(60, 60, -60, -60);
+  QPen pen(theme::colour("#D2C5AE"));
+  pen.setStyle(Qt::DashLine);
+  pen.setWidthF(1.0);
+  painter.setPen(pen);
+  painter.setBrush(Qt::NoBrush);
+  painter.drawRoundedRect(box, 8, 8);
+
+  painter.setPen(theme::colour(theme::kTextDim));
+  painter.setFont(theme::ui_font(13));
+  painter.drawText(box.adjusted(0, 0, 0, -22), Qt::AlignCenter,
+                   tr("将图像拖到这里，或按 Ctrl+O 打开"));
+
+  painter.setPen(theme::colour(theme::kTextFaint));
+  painter.setFont(theme::ui_font(11));
+  painter.drawText(box.adjusted(0, 26, 0, 0), Qt::AlignCenter,
+                   tr("中间分界线可拖动，对比处理前后"));
 }
 
 QRectF ImageCanvas::displayedImageRect() const {
@@ -202,11 +218,11 @@ QRectF ImageCanvas::displayedImageRect() const {
   if (mode_ == Mode::kSide) {
     const QRectF right(viewport.width() / 2.0, 0, viewport.width() / 2.0, viewport.height());
     const QRectF left(0, 0, viewport.width() / 2.0, viewport.height());
-    const double base = std::min(fitScale(before_.size(), left.adjusted(20, 20, -20, -20)),
-                                 fitScale(after_.size(), right.adjusted(20, 20, -20, -20)));
+    const double base = std::min(fitScale(before_.size(), left.adjusted(kPadding, kPadding, -kPadding, -kPadding)),
+                                 fitScale(after_.size(), right.adjusted(kPadding, kPadding, -kPadding, -kPadding)));
     return fittedRect(after_.size(), right, base * zoom_);
   }
-  const QRectF content = viewport.adjusted(20, 20, -20, -20);
+  const QRectF content = viewport.adjusted(kPadding, kPadding, -kPadding, -kPadding);
   return fittedRect(after_.size(), viewport, fitScale(after_.size(), content) * zoom_);
 }
 
@@ -303,13 +319,13 @@ void ImageCanvas::drawAnnotations(QPainter& painter) {
 
   // Draft shapes.
   if (drawing_rect_) {
-    painter.setPen(QPen(QColor(0x18, 0x5F, 0xA5), 1.4, Qt::DashLine));
-    painter.setBrush(QColor(0x18, 0x5F, 0xA5, 24));
+    painter.setPen(QPen(theme::colour(theme::kAccent), 1.4, Qt::DashLine));
+    painter.setBrush(QColor(0xB4, 0x56, 0x2A, 26));
     const QRectF draft(rect_start_, rect_current_);
     painter.drawRect(draft.normalized());
   } else if (!polygon_draft_.empty()) {
-    painter.setPen(QPen(QColor(0x18, 0x5F, 0xA5), 1.4, Qt::DashLine));
-    painter.setBrush(QColor(0x18, 0x5F, 0xA5, 24));
+    painter.setPen(QPen(theme::colour(theme::kAccent), 1.4, Qt::DashLine));
+    painter.setBrush(QColor(0xB4, 0x56, 0x2A, 26));
     QPolygonF polygon;
     for (const Point2f& point : polygon_draft_) {
       polygon << map_point(point);
@@ -326,32 +342,64 @@ void ImageCanvas::drawAnnotations(QPainter& painter) {
 void ImageCanvas::paintEvent(QPaintEvent* event) {
   Q_UNUSED(event);
   QPainter painter(this);
+  painter.setRenderHint(QPainter::Antialiasing, true);
   painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
-  painter.fillRect(rect(), kBackground);
+
+  QLinearGradient backdrop(0, 0, 0, static_cast<qreal>(height()));
+  backdrop.setColorAt(0.0, theme::colour("#F2ECDF"));
+  backdrop.setColorAt(1.0, theme::colour(theme::kCanvas));
+  painter.fillRect(rect(), backdrop);
 
   if (before_.isNull() && after_.isNull()) {
     drawEmptyState(painter);
     return;
   }
 
+  // A soft drop shadow separates the plate from the workbench without drawing
+  // a hard border around it.
+  const auto shadow = [&painter](const QRectF& area) {
+    painter.setPen(Qt::NoPen);
+    for (int i = 6; i >= 1; --i) {
+      painter.setBrush(QColor(74, 58, 32, 6));
+      painter.drawRoundedRect(area.adjusted(-i, -i + 3, i, i + 4), 3, 3);
+    }
+  };
+  const auto frame = [&painter](const QRectF& area) {
+    painter.setBrush(Qt::NoBrush);
+    painter.setPen(QPen(kFrameBorder, 1.0));
+    painter.drawRect(area.adjusted(0.5, 0.5, -0.5, -0.5));
+  };
+
   const QRectF viewport = rect();
-  const QRectF content = viewport.adjusted(20, 20, -20, -20);
+  QRectF drawn;
 
   if (mode_ == Mode::kSide) {
     const QRectF left(0, 0, viewport.width() / 2.0, viewport.height());
     const QRectF right(viewport.width() / 2.0, 0, viewport.width() / 2.0, viewport.height());
-    const double base = std::min(fitScale(before_.size(), left.adjusted(20, 20, -20, -20)),
-                                 fitScale(after_.size(), right.adjusted(20, 20, -20, -20)));
+    const double base = std::min(
+        fitScale(before_.size(), left.adjusted(kPadding, kPadding, -kPadding, -kPadding)),
+        fitScale(after_.size(), right.adjusted(kPadding, kPadding, -kPadding, -kPadding)));
     const double scale = base * zoom_;
-    painter.drawImage(fittedRect(before_.size(), left, scale), before_);
-    painter.drawImage(fittedRect(after_.size(), right, scale), after_);
-    painter.setPen(QColor(255, 255, 255, 180));
-    painter.drawLine(QPointF(viewport.center().x(), 0), QPointF(viewport.center().x(), height()));
-  } else {
-    const double base = fitScale(after_.size(), content);
-    const double scale = base * zoom_;
-    const QRectF drawn = fittedRect(after_.size(), viewport, scale);
+    const QRectF left_rect = fittedRect(before_.size(), left, scale);
+    const QRectF right_rect = fittedRect(after_.size(), right, scale);
 
+    shadow(left_rect);
+    shadow(right_rect);
+    painter.drawImage(left_rect, before_);
+    painter.drawImage(right_rect, after_);
+    frame(left_rect);
+    frame(right_rect);
+
+    painter.setPen(QPen(theme::colour("#1B2129"), 1.0));
+    painter.drawLine(QPointF(viewport.center().x(), 0),
+                     QPointF(viewport.center().x(), height()));
+    drawn = right_rect;
+  } else {
+    const QRectF content = viewport.adjusted(kPadding, kPadding, -kPadding, -kPadding);
+    const double scale = fitScale(after_.size(), content) * zoom_;
+    drawn = fittedRect(after_.size(), viewport, scale);
+
+    shadow(drawn);
     painter.drawImage(drawn, before_);
 
     if (mode_ == Mode::kSplit) {
@@ -362,51 +410,59 @@ void ImageCanvas::paintEvent(QPaintEvent* event) {
       painter.drawImage(drawn, after_);
       painter.restore();
 
-      // Divider.
-      const double x = dividerX();
-      painter.setPen(QPen(QColor(255, 255, 255, 230), 2.0));
-      painter.drawLine(QPointF(x, 0), QPointF(x, height()));
+      const double x = drawn.left() + drawn.width() * split_;
+      // A dark hairline under a white core: visible on light and dark plates.
+      painter.setPen(QPen(QColor(36, 31, 24, 90), 1.0));
+      painter.drawLine(QPointF(x + 1, drawn.top()), QPointF(x + 1, drawn.bottom()));
+      painter.setPen(QPen(QColor(255, 255, 255, 235), 1.4));
+      painter.drawLine(QPointF(x, drawn.top()), QPointF(x, drawn.bottom()));
 
       const QPointF handle(x, viewport.center().y());
-      painter.setRenderHint(QPainter::Antialiasing, true);
-      painter.setBrush(QColor(255, 255, 255, 245));
-      painter.setPen(QPen(QColor(0xD2, 0xCE, 0xBD), 1.0));
-      painter.drawEllipse(handle, 13.0, 13.0);
+      painter.setPen(QPen(QColor(255, 255, 255, 210), 1.5));
+      painter.setBrush(QColor(36, 31, 24, 236));
+      painter.drawEllipse(handle, 12.0, 12.0);
       painter.setPen(Qt::NoPen);
-      painter.setBrush(QColor(0x8A, 0x8A, 0x7E));
-      const QPointF centre = handle;
-      painter.drawPolygon(QPolygonF{centre + QPointF(-7, 0), centre + QPointF(-2.5, -4),
-                                    centre + QPointF(-2.5, 4)});
-      painter.drawPolygon(QPolygonF{centre + QPointF(7, 0), centre + QPointF(2.5, -4),
-                                    centre + QPointF(2.5, 4)});
-      painter.setRenderHint(QPainter::Antialiasing, false);
+      painter.setBrush(QColor(255, 255, 255, 235));
+      painter.drawPolygon(QPolygonF{handle + QPointF(-6, 0), handle + QPointF(-2, -3.4),
+                                    handle + QPointF(-2, 3.4)});
+      painter.drawPolygon(QPolygonF{handle + QPointF(6, 0), handle + QPointF(2, -3.4),
+                                    handle + QPointF(2, 3.4)});
     } else {
       painter.drawImage(drawn, after_);
     }
+    frame(drawn);
   }
 
   drawAnnotations(painter);
 
-  // Corner badges.
-  painter.setRenderHint(QPainter::Antialiasing, true);
-  const auto badge = [&painter](const QRectF& area, const QString& text, const QColor& accent) {
-    QFont font = painter.font();
-    font.setPointSizeF(8.5);
-    painter.setFont(font);
-    const QRectF box(area.left(), area.top(), painter.fontMetrics().horizontalAdvance(text) + 18, 20);
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(255, 255, 255, 235));
+  // Corner chips: dark glass, one accent dot, no drop shadow.
+  const auto chip = [&painter](QPointF top_left, const QString& text, const QColor& dot) {
+    painter.setFont(theme::ui_font(10, QFont::DemiBold));
+    const QFontMetricsF metrics(painter.font());
+    const qreal width = metrics.horizontalAdvance(text) + 30.0;
+    const QRectF box(top_left.x(), top_left.y(), width, 22.0);
+    painter.setPen(QPen(kChipBorder, 1.0));
+    painter.setBrush(kChipFill);
     painter.drawRoundedRect(box, 4, 4);
-    painter.setPen(accent);
-    painter.drawText(box.adjusted(9, 0, -6, 0), Qt::AlignVCenter | Qt::AlignLeft, text);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(dot);
+    painter.drawEllipse(QPointF(box.left() + 10.5, box.center().y()), 2.6, 2.6);
+    painter.setPen(kChipText);
+    painter.drawText(box.adjusted(17, 0, -8, 0), Qt::AlignVCenter | Qt::AlignLeft, text);
   };
+
+  const QColor before_dot = theme::colour(theme::kTextFaint);
+  const QColor after_dot = theme::colour(theme::kAccent);
   if (mode_ == Mode::kSide) {
-    badge(QRectF(12, 12, 0, 0), tr("原图"), QColor(0x5F, 0x5E, 0x5A));
-    badge(QRectF(viewport.width() / 2.0 + 12, 12, 0, 0), tr("结果"), kAccent);
+    chip(QPointF(kPadding + 8, kPadding + 8), tr("原图"), before_dot);
+    chip(QPointF(viewport.width() / 2.0 + kPadding + 8, kPadding + 8), tr("结果"), after_dot);
+  } else if (mode_ == Mode::kSplit) {
+    chip(QPointF(drawn.left() + 10, drawn.top() + 10), tr("原图"), before_dot);
+    chip(QPointF(drawn.right() - 78, drawn.top() + 10), tr("结果"), after_dot);
   } else {
-    badge(QRectF(12, 12, 0, 0), tr("原图"), QColor(0x5F, 0x5E, 0x5A));
-    badge(QRectF(viewport.width() - 92, 12, 0, 0), tr("结果"), kAccent);
+    chip(QPointF(drawn.left() + 10, drawn.top() + 10), tr("结果"), after_dot);
   }
+
   painter.setRenderHint(QPainter::Antialiasing, false);
 }
 

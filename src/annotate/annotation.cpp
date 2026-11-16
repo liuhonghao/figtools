@@ -346,10 +346,10 @@ std::string AnnotationSet::to_yolo_txt() const {
 
 std::vector<LabelClass> default_classes() {
   return {
-      LabelClass{0, "划痕", "#185FA5"},
-      LabelClass{1, "凹坑", "#D4537E"},
-      LabelClass{2, "锈斑", "#3B6D11"},
-      LabelClass{3, "异物", "#854F0B"},
+      LabelClass{0, "区域", "#B4562A"},
+      LabelClass{1, "目标", "#4F7A72"},
+      LabelClass{2, "参考", "#A9781A"},
+      LabelClass{3, "忽略", "#7A4E5E"},
   };
 }
 

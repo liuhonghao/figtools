@@ -36,6 +36,7 @@ echo "==> moc"
 "$QT_ROOT/bin/moc.exe" gui/image_canvas.hpp -o "$OUT_DIR/moc_image_canvas.cpp"
 "$QT_ROOT/bin/moc.exe" gui/histogram_widget.hpp -o "$OUT_DIR/moc_histogram_widget.cpp"
 "$QT_ROOT/bin/moc.exe" gui/main_window.hpp -o "$OUT_DIR/moc_main_window.cpp"
+"$QT_ROOT/bin/moc.exe" gui/widgets.hpp -o "$OUT_DIR/moc_widgets.cpp"
 
 echo "==> compile and link"
 "$CXX" -std=c++20 -O2 -DQT_NO_DEBUG -DUNICODE -D_UNICODE \

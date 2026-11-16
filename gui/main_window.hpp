@@ -12,20 +12,21 @@
 #include <QString>
 #include <QTimer>
 
-#include "figtools/core/image.hpp"
-#include "figtools/pipeline/executor.hpp"
 #include "figtools/annotate/annotation.hpp"
+#include "figtools/core/image.hpp"
 #include "figtools/dataset/dataset.hpp"
+#include "figtools/pipeline/executor.hpp"
 #include "figtools/pipeline/recipe.hpp"
 
-class QComboBox;
+class QAction;
+class QAbstractButton;
+class QDoubleSpinBox;
+class QHBoxLayout;
 class QLabel;
 class QListWidget;
-class QTabWidget;
-class QCheckBox;
-class QDoubleSpinBox;
-class QSpinBox;
 class QProgressBar;
+class QSpinBox;
+class QTabWidget;
 class QVBoxLayout;
 class QWidget;
 
@@ -33,6 +34,7 @@ namespace figtools::gui {
 
 class HistogramWidget;
 class ImageCanvas;
+class KeyValueList;
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -46,13 +48,22 @@ class MainWindow : public QMainWindow {
   void addDemoAnnotations();
   void loadDatasetDirectory(const QString& path);
 
+  // Fits the canvas before a screenshot so captures are framing-stable.
+  void prepareForCapture();
+
  protected:
   void dragEnterEvent(QDragEnterEvent* event) override;
   void dropEvent(QDropEvent* event) override;
 
  private:
-  void buildUi();
   void buildActions();
+  void buildUi();
+  void buildTopBar(QVBoxLayout* outer);
+  QWidget* buildChainPage(QWidget* parent);
+  QWidget* buildAnnotatePage(QWidget* parent);
+  QWidget* buildDatasetPage(QWidget* parent);
+  QWidget* buildFactsPanel(QWidget* parent);
+
   void rebuildChain();
   void addOperator(const QString& id);
   void removeStep(std::size_t index);
@@ -77,6 +88,8 @@ class MainWindow : public QMainWindow {
   void splitDataset();
   void exportDataset();
   void setBusy(bool busy, const QString& message = QString());
+  void notify(const QString& text, int timeout_ms = 3000);
+  void setCompareMode(int mode);
 
   [[nodiscard]] QWidget* buildParamEditor(const ParamSpec& spec, const ParamValue& value,
                                           std::size_t step_index, const QString& key);
@@ -94,9 +107,10 @@ class MainWindow : public QMainWindow {
   QWidget* chain_container_ = nullptr;
   QVBoxLayout* chain_layout_ = nullptr;
   QLabel* chain_summary_ = nullptr;
-  QLabel* info_grid_ = nullptr;
-  QLabel* stats_grid_ = nullptr;
-  QComboBox* mode_combo_ = nullptr;
+  KeyValueList* info_list_ = nullptr;
+  KeyValueList* stats_list_ = nullptr;
+  QLabel* status_file_ = nullptr;
+  QLabel* status_message_ = nullptr;
   QLabel* status_size_ = nullptr;
   QLabel* status_zoom_ = nullptr;
   QLabel* status_position_ = nullptr;
@@ -109,16 +123,23 @@ class MainWindow : public QMainWindow {
 
   Dataset dataset_;
   QString dataset_path_;
-  QLabel* dataset_stats_ = nullptr;
+  KeyValueList* dataset_stats_ = nullptr;
   QLabel* dataset_split_ = nullptr;
   QListWidget* dataset_warnings_ = nullptr;
   QDoubleSpinBox* train_ratio_ = nullptr;
   QDoubleSpinBox* val_ratio_ = nullptr;
   QDoubleSpinBox* test_ratio_ = nullptr;
-  QCheckBox* stratified_ = nullptr;
+  QAbstractButton* stratified_ = nullptr;
   QSpinBox* split_seed_ = nullptr;
   QProgressBar* progress_ = nullptr;
   QTimer* preview_timer_ = nullptr;
+  QTimer* message_timer_ = nullptr;
+
+  QAction* open_action_ = nullptr;
+  QAction* sample_action_ = nullptr;
+  QAction* export_action_ = nullptr;
+  QAction* fit_action_ = nullptr;
+  QAction* actual_action_ = nullptr;
 };
 
 }  // namespace figtools::gui

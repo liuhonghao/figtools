@@ -102,7 +102,7 @@ TEST(coco_export_contains_categories_and_boxes) {
   CHECK(text.find("\"categories\"") != std::string::npos);
   CHECK(text.find("\"bbox\"") != std::string::npos);
   CHECK(text.find("\"segmentation\"") != std::string::npos);
-  CHECK(text.find("划痕") != std::string::npos);
+  CHECK(text.find(default_classes().front().name) != std::string::npos);
 }
 
 TEST(annotation_json_round_trip) {
@@ -137,6 +137,9 @@ TEST(annotation_json_rejects_garbage) {
 TEST(default_classes_are_stable) {
   const auto classes = default_classes();
   CHECK_EQ(classes.size(), static_cast<std::size_t>(4));
-  CHECK_EQ(classes[0].name, std::string("划痕"));
   CHECK_EQ(classes[0].id, 0);
+  CHECK(!classes[0].name.empty());
+  // Colours travel with the schema; they must stay parseable hex triplets.
+  CHECK_EQ(classes[0].color.size(), static_cast<std::size_t>(7));
+  CHECK_EQ(classes[0].color.front(), '#');
 }

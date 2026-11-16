@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(figtools
-  VERSION 0.1.0
+  VERSION 0.5.0
   DESCRIPTION "Image processing workbench: deterministic pipelines, operator registry, CLI"
   HOMEPAGE_URL "https://github.com/liuhonghao/figtools"
   LANGUAGES CXX
@@ -140,6 +140,10 @@ if(FIGTOOLS_BUILD_GUI)
     gui/image_canvas.hpp
     gui/histogram_widget.cpp
     gui/histogram_widget.hpp
+    gui/theme.cpp
+    gui/theme.hpp
+    gui/widgets.cpp
+    gui/widgets.hpp
   )
   target_include_directories(figtools_gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gui)
   target_compile_definitions(figtools_gui PRIVATE FIGTOOLS_VERSION="${PROJECT_VERSION}")

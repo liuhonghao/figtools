@@ -8,19 +8,24 @@
 #include <QPaintEvent>
 
 #include <algorithm>
+#include <cmath>
 #include <array>
+#include <vector>
+
+#include "theme.hpp"
 
 namespace figtools::gui {
 namespace {
 
 constexpr int kBins = 256;
 
-QPainterPath buildPath(const std::array<int, kBins>& histogram, double scale, const QRectF& area) {
+QPainterPath buildPath(const std::array<double, kBins>& histogram, const QRectF& area) {
   QPainterPath path;
   path.moveTo(area.left(), area.bottom());
   for (int i = 0; i < kBins; ++i) {
     const double x = area.left() + area.width() * static_cast<double>(i) / (kBins - 1);
-    const double y = area.bottom() - static_cast<double>(histogram[i]) * scale * area.height();
+    const double ratio = std::clamp(histogram[i], 0.0, 1.0);
+    const double y = area.bottom() - ratio * area.height();
     path.lineTo(x, y);
   }
   path.lineTo(area.right(), area.bottom());
@@ -48,16 +53,25 @@ void HistogramWidget::clear() {
 void HistogramWidget::paintEvent(QPaintEvent* event) {
   Q_UNUSED(event);
   QPainter painter(this);
-  painter.fillRect(rect(), Qt::white);
-  painter.setPen(QColor(0xEE, 0xEB, 0xDF));
+  painter.setRenderHint(QPainter::Antialiasing, true);
+
+  const QRectF box = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+  painter.setPen(QPen(theme::colour(theme::kLine), 1.0));
+  painter.setBrush(theme::colour("#FBF6EC"));
+  painter.drawRoundedRect(box, 5, 5);
+
+  const QRectF plot = box.adjusted(10, 10, -10, -8);
+
+  painter.setPen(QPen(theme::colour("#EDE4D3"), 1.0));
   for (int i = 1; i < 4; ++i) {
-    const int y = height() * i / 4;
-    painter.drawLine(0, y, width(), y);
+    const double y = plot.top() + plot.height() * static_cast<double>(i) / 4.0;
+    painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
   }
 
   if (image_.isNull()) {
-    painter.setPen(QColor(0x8A, 0x8A, 0x7E));
-    painter.drawText(rect(), Qt::AlignCenter, tr("无数据"));
+    painter.setPen(theme::colour(theme::kTextFaint));
+    painter.setFont(theme::ui_font(11));
+    painter.drawText(plot, Qt::AlignCenter, tr("无数据"));
     return;
   }
 
@@ -73,25 +87,45 @@ void HistogramWidget::paintEvent(QPaintEvent* event) {
     }
   }
 
-  int peak = 1;
-  for (const auto& channel : histograms) {
-    for (const int value : channel) {
+  // A saturated background (paper, sky, a white wall) can own half the pixels
+  // and flatten every other bin to zero. A square-root curve with a short
+  // moving average keeps the shape readable without inventing data.
+  const QColor colours[3] = {QColor(0xA9, 0x50, 0x3C), QColor(0x6B, 0x7F, 0x4A),
+                             QColor(0x3F, 0x6E, 0x8C)};
+  std::array<std::array<double, kBins>, 3> curves{};
+  double peak = 0.0;
+  for (std::size_t channel = 0; channel < 3; ++channel) {
+    for (int i = 0; i < kBins; ++i) {
+      const int lo = std::max(0, i - 8);
+      const int hi = std::min(kBins - 1, i + 8);
+      double average = 0.0;
+      for (int k = lo; k <= hi; ++k) {
+        average += static_cast<double>(histograms[channel][static_cast<std::size_t>(k)]);
+      }
+      average /= static_cast<double>(hi - lo + 1);
+      const double value = std::sqrt(average);
+      curves[channel][static_cast<std::size_t>(i)] = value;
       peak = std::max(peak, value);
     }
   }
-  const double scale = 1.0 / static_cast<double>(peak);
-  const QRectF area = QRectF(rect()).adjusted(6, 8, -6, -6);
-
-  const QColor colours[3] = {QColor(0xD4, 0x53, 0x7E), QColor(0x3B, 0x6D, 0x11),
-                             QColor(0x18, 0x5F, 0xA5)};
-  painter.setRenderHint(QPainter::Antialiasing, true);
-  for (int channel = 0; channel < 3; ++channel) {
-    QColor fill = colours[channel];
-    fill.setAlpha(38);
-    painter.setPen(QPen(colours[channel], 1.2));
-    painter.setBrush(fill);
-    painter.drawPath(buildPath(histograms[static_cast<std::size_t>(channel)], scale, area));
+  const double scale = peak > 0.0 ? 1.0 / peak : 0.0;
+  for (auto& channel : curves) {
+    for (double& value : channel) {
+      value *= scale;
+    }
   }
+
+  for (std::size_t channel = 0; channel < 3; ++channel) {
+    QColor fill = colours[channel];
+    fill.setAlpha(42);
+    painter.setPen(QPen(colours[channel], 1.0));
+    painter.setBrush(fill);
+    painter.drawPath(buildPath(curves[channel], plot));
+  }
+
+  painter.setPen(QPen(theme::colour("#E0D5C1"), 1.0));
+  painter.setBrush(Qt::NoBrush);
+  painter.drawLine(QPointF(plot.left(), plot.bottom()), QPointF(plot.right(), plot.bottom()));
   painter.setRenderHint(QPainter::Antialiasing, false);
 }
 
