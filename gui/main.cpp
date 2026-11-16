@@ -13,7 +13,7 @@
 #include "theme.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "0.9.0"
+#define FIGTOOLS_VERSION "1.0.0"
 #endif
 
 int main(int argc, char** argv) {
@@ -92,6 +92,13 @@ int main(int argc, char** argv) {
     }
     window.openBatchInferDialog(directory);
     return 0;
+  }
+
+  const int detect_index = arguments.indexOf(QStringLiteral("--demo-detect"));
+  if (detect_index >= 0 && detect_index + 1 < arguments.size()) {
+    const QString directory = arguments.at(detect_index + 1);
+    QTimer::singleShot(500, &window, [&window, directory]() { window.loadModel(directory); });
+    QTimer::singleShot(900, &window, [&window]() { window.runDetection(); });
   }
 
   const int infer_index = arguments.indexOf(QStringLiteral("--demo-infer"));

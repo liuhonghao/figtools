@@ -66,6 +66,67 @@ During training stdout carries one JSON object per line:
 
 Human-readable logs go to stderr.
 
+## Detect (annotation-trained detector)
+
+Classification assigns one label to a whole image. To find **where** something
+is, train a detector from the boxes/polygons drawn in the 标注 page. This is a
+sliding-window patch classifier -- deliberately not a full detection head --
+so it trains in seconds on a CPU and makes the annotation layer actually feed
+the model.
+
+Build a dataset first: annotate images, open the 数据集 page, export a snapshot
+(`images/`, `annotations/`, `dataset.json`). Then:
+
+```json
+{
+  "data": "D:/data/detect-snapshot",
+  "output": "D:/models/detector-run1",
+  "arch": "smallcnn",
+  "input_size": 64,
+  "patch_size": 64,
+  "context": 0.35,
+  "positives_per_box": 3,
+  "negatives": 3,
+  "epochs": 15,
+  "batch_size": 32,
+  "lr": 0.002,
+  "seed": 2026,
+  "device": "auto"
+}
+```
+
+```bash
+python train_detect.py --job detect_job.json
+```
+
+`train_detect.py` crops each annotation's bounding box (plus jittered context)
+into positive patches, samples background patches that barely overlap any
+annotation, and trains a classifier that includes a `__background__` class.
+The extra files it writes:
+
+| file | contents |
+|---|---|
+| `patches/` | cropped training patches in class folders |
+| `patches.json` | patch size, context, class list, counts, split |
+| `model.json` | includes `"kind":"detector"`, `positive_classes`, `patch_size` |
+
+Then slide it over a new image:
+
+```bash
+python detect.py --model D:/models/detector-run1 --image D:/data/new.png \
+    --threshold 0.5 --nms 0.4 --scales 1.0,0.7,1.4
+```
+
+Prints one JSON object with `detections`, each `{label, confidence, x, y, w, h}`
+in source-image pixels. The desktop app draws these boxes on the result image
+in terracotta and reports the count in the status bar. NMS suppresses both
+high-IoU overlaps and same-class windows whose centres are close (multi-scale
+windows over one target).
+
+In the GUI: **模型 → 训练模型…**, set 任务 to "目标检测（从标注框学习）";
+then **模型 → 检测当前图像** (`Ctrl+D`). A classifier model cannot be used for
+detection and vice versa -- the model package records its kind.
+
 ## Predict
 
 ```bash
@@ -98,6 +159,7 @@ CSV is written with a UTF-8 BOM so Excel opens Chinese labels correctly.
 python smoke_test.py
 ```
 
-Generates a tiny two-class dataset, trains for a few epochs, predicts one
-image, then runs batch inference over the whole folder and checks the CSV row
-count. Requires the same packages as training.
+Runs four things end to end: a tiny two-class classification train, a single
+prediction, batch inference over the folder with a CSV row check, and a
+detector train from an annotated snapshot followed by a detection that must
+find the target. Requires the same packages as training.

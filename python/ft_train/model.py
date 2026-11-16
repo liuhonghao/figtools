@@ -94,6 +94,8 @@ def save_package(
     input_size: int,
     metrics: dict,
     history: list[dict],
+    kind: str = "classifier",
+    extra: dict | None = None,
 ) -> Path:
     target = Path(directory)
     target.mkdir(parents=True, exist_ok=True)
@@ -110,7 +112,7 @@ def save_package(
 
     metadata = {
         "format": "figtools-model/1",
-        "kind": "classifier",
+        "kind": kind,
         "arch": arch,
         "classes": list(classes),
         "input_size": int(input_size),
@@ -119,6 +121,8 @@ def save_package(
         "metrics": metrics,
         "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
+    if extra:
+        metadata.update(extra)
     (target / "model.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"
     )

@@ -21,7 +21,8 @@
 | **v0.7** | 撤销/重做：配方快照历史、参数拖动合并、Ctrl+Z / Ctrl+Y | ✅ 可用 |
 | **v0.8** | Python 训练与推理：PyTorch 分类训练、模型包、推理结果上画布 | ✅ 可用 |
 | **v0.9** | 批量推理：单进程跑整目录、CSV/JSONL 结果、进度与取消 | ✅ 可用 |
-| v1.0 | ONNX 导出、检测/分割模型、长驻 worker | 规划中 |
+| **v1.0** | 目标检测：从标注框裁片训练、滑窗 + NMS、检测框画回画布 | ✅ 可用 |
+| v1.1 | ONNX 导出、实例分割、长驻 worker、检测批量推理 | 规划中 |
 | v1.0 | 插件 ABI、批量任务中心、团队模式 | 规划中 |
 
 ![workbench](docs/images/workbench.png)
@@ -37,6 +38,10 @@
 ![inference](docs/images/inference.png)
 
 ![batch inference](docs/images/batch_infer.png)
+
+![detection](docs/images/detection.png)
+
+![detector training](docs/images/detect_training.png)
 
 当前仓库是**可运行的纵向切片**，不是界面原型：`figtools demo` 会真的生成图像、跑处理链、写出结果并给出 PSNR/SSIM。
 
@@ -62,6 +67,8 @@ loss / 训练精度 / 验证精度；**模型 → 载入模型…** 之后按 `C
 **模型 → 批量推理**：`Ctrl+Shift+R` 打开批量推理，用一个 Python 进程分类整个目录，
 进度实时回传，结果写成 CSV（含 Top-K 标签与分数）或 JSONL，可按阈值把低置信度标为 `unknown`。
 一次启动处理 40 张图只需 0.08 秒纯推理时间，避免每张图都付一次解释器启动成本。
+
+**目标检测**（v1.0）：在「模型 → 训练模型…」把任务切到「目标检测」，用标注页画好的框/多边形训练一个 patch 检测器——每个标注裁成正样本，再补背景负样本；训练好后在「模型 → 检测当前图像」（`Ctrl+D`）对图片滑窗推理，NMS 合并后把赤陶色检测框画回画布。这样标注层的数据第一次真正变成了训练输入，而不再只用于派生整图类别。
 
 ## 它解决什么问题
 

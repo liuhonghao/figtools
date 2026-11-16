@@ -59,6 +59,18 @@ class ImageCanvas : public QWidget {
   void setInferenceResult(const QString& label, double confidence);
   void clearInferenceResult();
 
+  // Detector results are boxes in result-image pixel coordinates. They live in
+  // a separate overlay from manual annotations so inference never corrupts the
+  // ground truth that feeds training.
+  struct Detection {
+    QString label;
+    double confidence = 0.0;
+    QRectF box;
+  };
+  void setDetections(std::vector<Detection> detections);
+  void clearDetections();
+  [[nodiscard]] const std::vector<Detection>& detections() const { return detections_; }
+
   void setStatusCallback(std::function<void(const QString&)> callback);
   void setCursorCallback(std::function<void(QPoint, bool)> callback);
   void setZoomCallback(std::function<void(double)> callback);
@@ -81,6 +93,7 @@ class ImageCanvas : public QWidget {
   [[nodiscard]] QPoint toImagePoint(QPoint widget_point) const;
   void drawEmptyState(QPainter& painter);
   void drawAnnotations(QPainter& painter);
+  void drawDetections(QPainter& painter);
   [[nodiscard]] QRectF displayedImageRect() const;
   [[nodiscard]] QPointF toImagePointF(QPointF widget_point) const;
   [[nodiscard]] int hitTest(QPointF image_point) const;
@@ -115,6 +128,7 @@ class ImageCanvas : public QWidget {
 
   QString inference_label_;
   double inference_confidence_ = -1.0;
+  std::vector<Detection> detections_;
 };
 
 }  // namespace figtools::gui

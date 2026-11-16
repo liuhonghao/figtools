@@ -66,7 +66,7 @@
 #include "widgets.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "0.9.0"
+#define FIGTOOLS_VERSION "1.0.0"
 #endif
 
 namespace figtools::gui {
@@ -269,9 +269,12 @@ void MainWindow::buildActions() {
   connect(train_action, &QAction::triggered, this, [this]() { openTrainDialog(); });
   auto* choose_model_action = model_menu->addAction(tr("载入模型…"));
   connect(choose_model_action, &QAction::triggered, this, &MainWindow::chooseModel);
-  auto* infer_action = model_menu->addAction(tr("对当前图像推理"));
+  auto* infer_action = model_menu->addAction(tr("分类当前图像"));
   infer_action->setShortcut(QKeySequence(QStringLiteral("Ctrl+R")));
   connect(infer_action, &QAction::triggered, this, &MainWindow::runInference);
+  auto* detect_action = model_menu->addAction(tr("检测当前图像"));
+  detect_action->setShortcut(QKeySequence(QStringLiteral("Ctrl+D")));
+  connect(detect_action, &QAction::triggered, this, &MainWindow::runDetection);
   auto* batch_infer_action = model_menu->addAction(tr("批量推理…"));
   batch_infer_action->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+R")));
   connect(batch_infer_action, &QAction::triggered, this,
@@ -1905,9 +1908,14 @@ void MainWindow::loadModel(const QString& directory) {
   }
   const QJsonObject metadata = document.object();
   model_dir_ = directory;
+  model_kind_ = metadata.value(QStringLiteral("kind")).toString(QStringLiteral("classifier"));
   model_arch_ = metadata.value(QStringLiteral("arch")).toString();
   model_input_ = metadata.value(QStringLiteral("input_size")).toInt(224);
-  model_classes_ = metadata.value(QStringLiteral("classes")).toArray().size();
+  const QJsonArray positive =
+      metadata.value(QStringLiteral("positive_classes")).toArray();
+  model_classes_ = positive.isEmpty()
+                       ? metadata.value(QStringLiteral("classes")).toArray().size()
+                       : positive.size();
   const QJsonObject metrics = metadata.value(QStringLiteral("metrics")).toObject();
   model_val_ = metrics.contains(QStringLiteral("val_accuracy"))
                    ? metrics.value(QStringLiteral("val_accuracy")).toDouble()
@@ -1918,6 +1926,7 @@ void MainWindow::loadModel(const QString& directory) {
   refreshModelPanel();
   if (canvas_ != nullptr) {
     canvas_->clearInferenceResult();
+    canvas_->clearDetections();
   }
 
   QSettings settings;
@@ -1939,6 +1948,7 @@ void MainWindow::refreshModelPanel() {
           : QStringLiteral("—");
   model_list_->set_rows({
       {tr("模型"), QFileInfo(model_dir_).fileName()},
+      {tr("类型"), model_kind_ == QLatin1String("detector") ? tr("检测") : tr("分类")},
       {tr("架构"), QStringLiteral("%1 · %2 px").arg(model_arch_).arg(model_input_)},
       {tr("类别"), QString::number(model_classes_)},
       {tr("验证"), model_val_ >= 0.0 ? QString::number(model_val_, 'f', 3) : QStringLiteral("—")},
@@ -1948,7 +1958,102 @@ void MainWindow::refreshModelPanel() {
   });
 }
 
+void MainWindow::runDetection() {
+  if (source_.empty()) {
+    notify(tr("没有可检测的图像"), 3000);
+    return;
+  }
+  if (model_kind_ != QLatin1String("detector")) {
+    QMessageBox::information(this, tr("模型类型不符"),
+                             tr("当前模型是分类器。请用「训练模型 → 目标检测」训练检测模型，"
+                                "或载入一个检测模型包。"));
+    return;
+  }
+
+  QString image_path = source_path_;
+  if (image_path.isEmpty()) {
+    if (!inference_temp_) {
+      inference_temp_ = std::make_unique<QTemporaryDir>();
+    }
+    image_path = inference_temp_->filePath(QStringLiteral("detect_current.png"));
+    if (auto saved = save_image(source_, image_path.toStdString()); !saved) {
+      QMessageBox::warning(this, tr("检测失败"), error_text(saved.error()));
+      return;
+    }
+  }
+
+  const QString python =
+      QSettings().value(QStringLiteral("python/executable"), resolve_python()).toString();
+  const QString scripts = python_scripts_dir();
+
+  setBusy(true, tr("检测中…"));
+  QProcess process;
+  process.setWorkingDirectory(scripts);
+  process.setProcessChannelMode(QProcess::SeparateChannels);
+  process.start(python,
+                {QStringLiteral("detect.py"), QStringLiteral("--model"), model_dir_,
+                 QStringLiteral("--image"), image_path, QStringLiteral("--threshold"),
+                 QStringLiteral("0.5"), QStringLiteral("--nms"), QStringLiteral("0.4")});
+  const bool started = process.waitForStarted(5000);
+  const bool finished = started && process.waitForFinished(180000);
+  setBusy(false);
+
+  if (!started) {
+    QMessageBox::warning(this, tr("无法启动 Python"), process.errorString());
+    return;
+  }
+  if (!finished) {
+    process.kill();
+    QMessageBox::warning(this, tr("检测超时"), tr("检测进程在 3 分钟内没有返回。"));
+    return;
+  }
+  if (process.exitCode() != 0) {
+    const QString message = QString::fromUtf8(process.readAllStandardError()).trimmed();
+    QMessageBox::warning(this, tr("检测失败"),
+                         message.isEmpty() ? tr("检测进程返回 %1").arg(process.exitCode())
+                                           : message.right(800));
+    return;
+  }
+
+  const QJsonDocument document = QJsonDocument::fromJson(process.readAllStandardOutput());
+  if (!document.isObject()) {
+    QMessageBox::warning(this, tr("检测失败"), tr("检测脚本没有返回 JSON。"));
+    return;
+  }
+  const QJsonObject result = document.object();
+  const QJsonArray boxes = result.value(QStringLiteral("detections")).toArray();
+  std::vector<ImageCanvas::Detection> detected;
+  detected.reserve(static_cast<std::size_t>(boxes.size()));
+  for (const QJsonValue& value : boxes) {
+    const QJsonObject box = value.toObject();
+    ImageCanvas::Detection item;
+    item.label = box.value(QStringLiteral("label")).toString();
+    item.confidence = box.value(QStringLiteral("confidence")).toDouble();
+    item.box = QRectF(box.value(QStringLiteral("x")).toDouble(),
+                      box.value(QStringLiteral("y")).toDouble(),
+                      box.value(QStringLiteral("w")).toDouble(),
+                      box.value(QStringLiteral("h")).toDouble());
+    detected.push_back(std::move(item));
+  }
+
+  const int detection_count = static_cast<int>(detected.size());
+  prediction_label_ = detection_count == 0 ? tr("未检出")
+                                           : tr("%1 个目标").arg(detection_count);
+  if (canvas_ != nullptr) {
+    canvas_->clearInferenceResult();
+    canvas_->setDetections(std::move(detected));
+  }
+  prediction_confidence_ = -1.0;
+  prediction_second_.clear();
+  refreshModelPanel();
+  notify(tr("检测到 %1 个目标").arg(detection_count), 5000);
+}
+
 void MainWindow::runInference() {
+  if (model_kind_ == QLatin1String("detector")) {
+    runDetection();
+    return;
+  }
   if (source_.empty()) {
     notify(tr("没有可推理的图像"), 3000);
     return;

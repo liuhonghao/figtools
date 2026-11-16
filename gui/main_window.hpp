@@ -60,6 +60,7 @@ class MainWindow : public QMainWindow {
   void chooseModel();
   void loadModel(const QString& directory);
   void runInference();
+  void runDetection();
   void openBatchInferDialog(const QString& data_hint = QString());
   void refreshModelPanel();
 
@@ -166,6 +167,7 @@ class MainWindow : public QMainWindow {
   QString last_open_dir_;
   QString model_dir_;
   QString model_arch_;
+  QString model_kind_;  // "classifier" or "detector"
   int model_input_ = 224;
   int model_classes_ = 0;
   double model_val_ = -1.0;

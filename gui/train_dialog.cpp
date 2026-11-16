@@ -68,7 +68,7 @@ void TrainDialog::buildUi(const QString& data_hint) {
   root->addWidget(title);
 
   auto* subtitle = new QLabel(
-      tr("用 PyTorch 训练分类模型；数据目录可以是“每类一个子文件夹”，也可以是导出的数据集快照。"),
+      tr("用 PyTorch 训练模型：分类用类文件夹或数据集快照；检测用带标注框的数据集快照，从标注中裁切正负样本。"),
       this);
   subtitle->setObjectName(QStringLiteral("Meta"));
   subtitle->setFont(theme::ui_font(11));
@@ -95,21 +95,34 @@ void TrainDialog::buildUi(const QString& data_hint) {
     return label;
   };
 
+  task_combo_ = new QComboBox(this);
+  task_combo_->addItem(tr("图像分类（整图一个标签）"), QStringLiteral("classifier"));
+  task_combo_->addItem(tr("目标检测（从标注框学习）"), QStringLiteral("detector"));
+  task_combo_->setFixedWidth(230);
+  auto* task_row = new QHBoxLayout();
+  task_row->setSpacing(8);
+  task_row->addWidget(task_combo_);
+  task_row->addStretch(1);
+  grid->addWidget(field_label(tr("任务")), 0, 0);
+  grid->addLayout(task_row, 0, 1, 1, 2);
+  connect(task_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+          [this]() { applyTaskDefaults(); });
+
   data_edit_ = new QLineEdit(this);
   data_edit_->setPlaceholderText(tr("数据目录（每类一个子文件夹）"));
   auto* data_button = new QPushButton(tr("浏览…"), this);
   data_button->setFixedWidth(68);
-  grid->addWidget(field_label(tr("数据目录")), 0, 0);
-  grid->addWidget(data_edit_, 0, 1);
-  grid->addWidget(data_button, 0, 2);
+  grid->addWidget(field_label(tr("数据目录")), 1, 0);
+  grid->addWidget(data_edit_, 1, 1);
+  grid->addWidget(data_button, 1, 2);
 
   output_edit_ = new QLineEdit(this);
   output_edit_->setPlaceholderText(tr("模型包输出目录"));
   auto* output_button = new QPushButton(tr("浏览…"), this);
   output_button->setFixedWidth(68);
-  grid->addWidget(field_label(tr("模型输出")), 1, 0);
-  grid->addWidget(output_edit_, 1, 1);
-  grid->addWidget(output_button, 1, 2);
+  grid->addWidget(field_label(tr("模型输出")), 2, 0);
+  grid->addWidget(output_edit_, 2, 1);
+  grid->addWidget(output_button, 2, 2);
 
   arch_combo_ = new QComboBox(this);
   arch_combo_->addItem(QStringLiteral("ResNet-18"), QStringLiteral("resnet18"));
@@ -129,8 +142,8 @@ void TrainDialog::buildUi(const QString& data_hint) {
   arch_row->addWidget(inline_label(tr("输入")));
   arch_row->addWidget(input_spin_);
   arch_row->addStretch(1);
-  grid->addWidget(field_label(tr("模型")), 2, 0);
-  grid->addLayout(arch_row, 2, 1, 1, 2);
+  grid->addWidget(field_label(tr("模型")), 3, 0);
+  grid->addLayout(arch_row, 3, 1, 1, 2);
 
   epochs_spin_ = new QSpinBox(this);
   epochs_spin_->setRange(1, 1000);
@@ -157,8 +170,8 @@ void TrainDialog::buildUi(const QString& data_hint) {
   optim_row->addWidget(inline_label(tr("学习率")));
   optim_row->addWidget(lr_spin_);
   optim_row->addStretch(1);
-  grid->addWidget(field_label(tr("优化")), 3, 0);
-  grid->addLayout(optim_row, 3, 1, 1, 2);
+  grid->addWidget(field_label(tr("优化")), 4, 0);
+  grid->addLayout(optim_row, 4, 1, 1, 2);
 
   device_combo_ = new QComboBox(this);
   device_combo_->addItem(tr("自动"), QStringLiteral("auto"));
@@ -169,15 +182,15 @@ void TrainDialog::buildUi(const QString& data_hint) {
   device_row->setSpacing(8);
   device_row->addWidget(device_combo_);
   device_row->addStretch(1);
-  grid->addWidget(field_label(tr("设备")), 4, 0);
-  grid->addLayout(device_row, 4, 1, 1, 2);
+  grid->addWidget(field_label(tr("设备")), 5, 0);
+  grid->addLayout(device_row, 5, 1, 1, 2);
 
   python_edit_ = new QLineEdit(this);
   auto* python_button = new QPushButton(tr("浏览…"), this);
   python_button->setFixedWidth(68);
-  grid->addWidget(field_label(tr("Python")), 5, 0);
-  grid->addWidget(python_edit_, 5, 1);
-  grid->addWidget(python_button, 5, 2);
+  grid->addWidget(field_label(tr("Python")), 6, 0);
+  grid->addWidget(python_edit_, 6, 1);
+  grid->addWidget(python_button, 6, 2);
 
   root->addLayout(grid);
 
@@ -235,17 +248,45 @@ void TrainDialog::buildUi(const QString& data_hint) {
   python_edit_->setText(settings.value(QStringLiteral("python/executable"),
                                        resolve_python())
                             .toString());
+  const QString saved_task = settings.value(QStringLiteral("train/detail_task"), QStringLiteral("classifier")).toString();
+  if (const int index = task_combo_->findData(saved_task); index >= 0) {
+    task_combo_->setCurrentIndex(index);
+  }
+  applyTaskDefaults();
   const QString arch = settings.value(QStringLiteral("train/arch"), QStringLiteral("resnet18")).toString();
   if (const int index = arch_combo_->findData(arch); index >= 0) {
     arch_combo_->setCurrentIndex(index);
   }
-  input_spin_->setValue(settings.value(QStringLiteral("train/input"), 224).toInt());
-  epochs_spin_->setValue(settings.value(QStringLiteral("train/epochs"), 20).toInt());
-  batch_spin_->setValue(settings.value(QStringLiteral("train/batch"), 16).toInt());
+  const int default_input = isDetection() ? 64 : 224;
+  const int default_epochs = isDetection() ? 15 : 20;
+  const int default_batch = isDetection() ? 32 : 16;
+  input_spin_->setValue(settings.value(QStringLiteral("train/input"), default_input).toInt());
+  epochs_spin_->setValue(settings.value(QStringLiteral("train/epochs"), default_epochs).toInt());
+  batch_spin_->setValue(settings.value(QStringLiteral("train/batch"), default_batch).toInt());
   lr_spin_->setValue(settings.value(QStringLiteral("train/lr"), 0.001).toDouble());
   const QString device = settings.value(QStringLiteral("train/device"), QStringLiteral("auto")).toString();
   if (const int index = device_combo_->findData(device); index >= 0) {
     device_combo_->setCurrentIndex(index);
+  }
+}
+
+bool TrainDialog::isDetection() const {
+  return task_combo_ != nullptr && task_combo_->currentData().toString() == QLatin1String("detector");
+}
+
+void TrainDialog::applyTaskDefaults() {
+  if (isDetection()) {
+    data_edit_->setPlaceholderText(tr("数据集快照目录（含 dataset.json 与标注）"));
+    // A patch classifier sees small crops; 64 px keeps it fast and is what the
+    // detection worker defaults to. Users can still change it.
+    input_spin_->setValue(64);
+    epochs_spin_->setValue(15);
+    batch_spin_->setValue(32);
+  } else {
+    data_edit_->setPlaceholderText(tr("数据目录（每类一个子文件夹）"));
+    input_spin_->setValue(224);
+    epochs_spin_->setValue(20);
+    batch_spin_->setValue(16);
   }
 }
 
@@ -302,8 +343,10 @@ void TrainDialog::start() {
     return;
   }
   const QString scripts = python_scripts_dir();
-  if (!QFileInfo::exists(scripts + QStringLiteral("/train.py"))) {
-    appendLog(tr("找不到训练脚本：%1/train.py").arg(scripts), theme::colour(theme::kDanger));
+  const bool detection = isDetection();
+  const QString script = detection ? QStringLiteral("train_detect.py") : QStringLiteral("train.py");
+  if (!QFileInfo::exists(scripts + QLatin1Char('/') + script)) {
+    appendLog(tr("找不到训练脚本：%1/%2").arg(scripts, script), theme::colour(theme::kDanger));
     return;
   }
   QDir().mkpath(output);
@@ -319,6 +362,11 @@ void TrainDialog::start() {
   job.insert(QStringLiteral("device"), device_combo_->currentData().toString());
   job.insert(QStringLiteral("seed"), 2026);
   job.insert(QStringLiteral("val_ratio"), 0.2);
+  if (detection) {
+    job.insert(QStringLiteral("patch_size"), input_spin_->value());
+    job.insert(QStringLiteral("positives_per_box"), 3);
+    job.insert(QStringLiteral("negatives"), 3);
+  }
 
   const QString job_path = output + QStringLiteral("/job.json");
   QFile job_file(job_path);
@@ -332,6 +380,7 @@ void TrainDialog::start() {
   QSettings settings;
   settings.setValue(QStringLiteral("train/data"), data);
   settings.setValue(QStringLiteral("train/output"), output);
+  settings.setValue(QStringLiteral("train/detail_task"), task_combo_->currentData());
   settings.setValue(QStringLiteral("train/arch"), arch_combo_->currentData());
   settings.setValue(QStringLiteral("train/input"), input_spin_->value());
   settings.setValue(QStringLiteral("train/epochs"), epochs_spin_->value());
@@ -349,7 +398,8 @@ void TrainDialog::start() {
   progress_->setValue(0);
   progress_->show();
   status_label_->setText(tr("启动训练进程…"));
-  appendLog(QStringLiteral("%1 train.py --job %2").arg(python, QFileInfo(job_path).fileName()),
+  appendLog(QStringLiteral("%1 %2 --job %3")
+                .arg(python, script, QFileInfo(job_path).fileName()),
             theme::colour(theme::kTextFaint));
   setRunning(true);
 
@@ -364,7 +414,7 @@ void TrainDialog::start() {
               handleFinished(exit_code, static_cast<int>(status));
             });
   }
-  process_->start(python, {QStringLiteral("train.py"), QStringLiteral("--job"), job_path});
+  process_->start(python, {script, QStringLiteral("--job"), job_path});
   if (!process_->waitForStarted(5000)) {
     appendLog(tr("无法启动 Python：%1").arg(process_->errorString()),
               theme::colour(theme::kDanger));

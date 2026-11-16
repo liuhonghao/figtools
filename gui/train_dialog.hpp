@@ -53,11 +53,14 @@ class TrainDialog : public QDialog {
   void handleEvent(const QString& line);
   void appendLog(const QString& text, const QColor& colour);
   void setRunning(bool running);
+  [[nodiscard]] bool isDetection() const;
+  void applyTaskDefaults();
   void updateDefaultsForData();
 
   QLineEdit* data_edit_ = nullptr;
   QLineEdit* output_edit_ = nullptr;
   QLineEdit* python_edit_ = nullptr;
+  QComboBox* task_combo_ = nullptr;
   QComboBox* arch_combo_ = nullptr;
   QComboBox* device_combo_ = nullptr;
   QSpinBox* input_spin_ = nullptr;

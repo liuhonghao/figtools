@@ -119,6 +119,16 @@ void ImageCanvas::clearInferenceResult() {
   update();
 }
 
+void ImageCanvas::setDetections(std::vector<Detection> detections) {
+  detections_ = std::move(detections);
+  update();
+}
+
+void ImageCanvas::clearDetections() {
+  detections_.clear();
+  update();
+}
+
 void ImageCanvas::fitToWindow() {
   zoom_ = 1.0;
   pan_ = QPointF(0.0, 0.0);
@@ -200,6 +210,53 @@ QPoint ImageCanvas::toImagePoint(QPoint widget_point) const {
   const double fx = (static_cast<double>(widget_point.x()) - drawn.left()) / drawn.width();
   const double fy = (static_cast<double>(widget_point.y()) - drawn.top()) / drawn.height();
   return QPoint(static_cast<int>(fx * before_.width()), static_cast<int>(fy * before_.height()));
+}
+
+void ImageCanvas::drawDetections(QPainter& painter) {
+  if (detections_.empty() || after_.isNull()) {
+    return;
+  }
+  const QRectF target = displayedImageRect();
+  if (target.isEmpty()) {
+    return;
+  }
+  const double sx = target.width() / static_cast<double>(after_.width());
+  const double sy = target.height() / static_cast<double>(after_.height());
+
+  // Detection boxes use result-image coordinates. In split / side modes the
+  // plate shares one geometry, so the boxes are drawn across the full plate;
+  // clipping them to the result half would hide targets that happen to sit on
+  // the source side of the divider.
+  painter.save();
+  painter.setClipRect(target);
+  painter.setRenderHint(QPainter::Antialiasing, true);
+  const QColor colour = theme::colour(theme::kAccent);
+  for (const Detection& detection : detections_) {
+    const QRectF box(
+        target.left() + static_cast<double>(detection.box.left()) * sx,
+        target.top() + static_cast<double>(detection.box.top()) * sy,
+        static_cast<double>(detection.box.width()) * sx,
+        static_cast<double>(detection.box.height()) * sy);
+    painter.setPen(QPen(colour, 2.0));
+    QColor fill = colour;
+    fill.setAlpha(26);
+    painter.setBrush(fill);
+    painter.drawRect(box);
+
+    const QString label = tr("%1 %2%")
+                              .arg(detection.label)
+                              .arg(detection.confidence * 100.0, 0, 'f', 0);
+    painter.setFont(theme::ui_font(10, QFont::DemiBold));
+    const int text_width = painter.fontMetrics().horizontalAdvance(label) + 12;
+    const QRectF tag(box.left(), std::max(0.0, box.top() - 18.0), text_width, 17);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(colour);
+    painter.drawRoundedRect(tag, 3, 3);
+    painter.setPen(QColor(255, 255, 255));
+    painter.drawText(tag, Qt::AlignCenter, label);
+  }
+  painter.setRenderHint(QPainter::Antialiasing, false);
+  painter.restore();
 }
 
 void ImageCanvas::drawEmptyState(QPainter& painter) {
@@ -446,6 +503,7 @@ void ImageCanvas::paintEvent(QPaintEvent* event) {
   }
 
   drawAnnotations(painter);
+  drawDetections(painter);
 
   // Corner chips: dark glass, one accent dot, no drop shadow.
   const auto chip = [&painter](QPointF top_left, const QString& text, const QColor& dot,

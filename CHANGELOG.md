@@ -3,6 +3,27 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.0] - 2026-11-16
+
+### Added
+
+- **目标检测闭环**：标注框/多边形第一次真正参与训练。
+  - `ft_train/patches.py`：从数据集快照的标注裁出正负 patch（含随机抖动与背景负样本），
+    保留原 train/val/test 划分，写出 `patches.json`。
+  - `train_detect.py`：训练一个含 `__background__` 的 patch 分类器，
+    模型包带 `"kind":"detector"` / `positive_classes` / `patch_size`。
+  - `detect.py`：多尺度滑窗 + 批量分类 + NMS（高 IoU 或中心接近或包含关系均抑制），
+    输出 `detections`（label/confidence/x/y/w/h）。
+- **界面**：训练对话框新增「任务」下拉（分类 / 检测）与对应默认参数；
+  模型菜单新增「检测当前图像」（`Ctrl+D`）；`loadModel` 识别模型类型，
+  分类器与检测器互不误用；画布新增独立检测覆盖层（赤陶色框 + 标签）。
+- `smoke_test.py` 增加检测训练 + 推理断言。
+
+### Fixed
+
+- 检测状态栏在 `std::move` 后读取 `size()` 导致永远显示“0 个目标”。
+- 多尺度滑窗对同一目标产生多个框：NMS 增加中心距离与包含关系判据。
+
 ## [0.9.0] - 2026-11-16
 
 ### Added
