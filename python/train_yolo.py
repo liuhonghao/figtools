@@ -28,6 +28,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
+from types import SimpleNamespace
 
 from ft_train.events import emit, fail, log
 from ft_train.yolo_data import export_yolo
@@ -76,11 +77,47 @@ def main() -> int:
     patience = int(job.get("patience", 0))
 
     emit("phase", name="export")
-    try:
-        exported = export_yolo(data_root, target / "dataset")
-    except (OSError, ValueError) as error:
-        fail(str(error))
-        return 2
+    data_yaml_override = job.get("data_yaml", "")
+    if data_yaml_override:
+        # Pre-converted dataset (e.g. TTPLA): use its data.yaml directly instead
+        # of copying gigabytes of images through the snapshot exporter.
+        prepared = Path(data_yaml_override)
+        if not prepared.is_file():
+            fail(f"data_yaml not found: {prepared}")
+            return 2
+        manifest_path = prepared.parent / "conversion.json"
+        names: list[str] = []
+        images = {"train": 0, "val": 0, "test": 0}
+        labels = {"train": 0, "val": 0, "test": 0}
+        if manifest_path.is_file():
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                names = [entry["name"] for entry in manifest.get("classes", [])]
+                images.update(manifest.get("images", {}))
+                labels.update(manifest.get("labels", {}))
+            except (OSError, ValueError, KeyError, TypeError):
+                names = []
+        if not names:
+            # Fall back to parsing names straight out of data.yaml.
+            for line in prepared.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if stripped[:1].isdigit() and ":" in stripped:
+                    names.append(stripped.split(":", 1)[1].strip())
+        exported = SimpleNamespace(
+            data_yaml=prepared,
+            classes=names,
+            id_map={index: index for index in range(len(names))},
+            images=images,
+            labels=labels,
+            skipped=0,
+        )
+        log(f"using prepared dataset: {prepared} ({names})")
+    else:
+        try:
+            exported = export_yolo(data_root, target / "dataset")
+        except (OSError, ValueError) as error:
+            fail(str(error))
+            return 2
 
     emit(
         "dataset",

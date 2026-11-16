@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include "figtools/io/path.hpp"
+
 #include "io/codecs.hpp"
 
 namespace figtools {
@@ -19,15 +21,21 @@ namespace {
 
 constexpr std::size_t kProbeBytes = 64U * 1024U;
 
+// All path strings entering the core are UTF-8; use the native path for every
+// filesystem call so Chinese / non-ASCII filenames work on Windows.
+std::filesystem::path path_of(const std::string& value) {
+  return io::native_path(value);
+}
+
 std::string lowercase_extension(const std::string& path) {
-  std::string extension = std::filesystem::path(path).extension().string();
+  std::string extension = path_of(path).extension().string();
   std::transform(extension.begin(), extension.end(), extension.begin(),
                  [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   return extension;
 }
 
 Result<std::vector<std::uint8_t>> read_file(const std::string& path, std::size_t max_bytes) {
-  std::ifstream stream(path, std::ios::binary);
+  std::ifstream stream(path_of(path), std::ios::binary);
   if (!stream) {
     return Result<std::vector<std::uint8_t>>::fail(ErrorCode::kIoError,
                                                    "cannot open file: " + path);
@@ -183,7 +191,7 @@ Result<ImageInfo> probe_image(const std::string& path) {
 
   ImageInfo value = info.value();
   std::error_code ec;
-  const auto size = std::filesystem::file_size(path, ec);
+  const auto size = std::filesystem::file_size(path_of(path), ec);
   value.file_bytes = ec ? 0 : static_cast<std::uint64_t>(size);
   return Result<ImageInfo>::ok(value);
 }
@@ -223,7 +231,7 @@ Status save_image(const Image& image, const std::string& path) {
     return Status::fail(encoded.error().code, encoded.error().message);
   }
 
-  std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+  std::ofstream stream(path_of(path), std::ios::binary | std::ios::trunc);
   if (!stream) {
     return Status::fail(ErrorCode::kIoError, "cannot write file: " + path);
   }

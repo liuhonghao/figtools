@@ -18,6 +18,7 @@
 
 #include "figtools/core/hash.hpp"
 #include "figtools/io/image_io.hpp"
+#include "figtools/io/path.hpp"
 #include "figtools/json/json.hpp"
 
 namespace figtools {
@@ -95,7 +96,7 @@ const char* to_string(Split split) noexcept {
 
 Result<Dataset> Dataset::scan(const std::string& directory, bool recursive) {
   std::error_code ec;
-  const fs::path root(directory);
+  const fs::path root = io::native_path(directory);
   if (!fs::is_directory(root, ec)) {
     return Result<Dataset>::fail(ErrorCode::kInvalidArgument,
                                  "dataset: not a directory: " + directory);
@@ -390,7 +391,7 @@ Status Dataset::export_snapshot(const std::string& output_directory,
   namespace fs = std::filesystem;
   std::error_code ec;
 
-  const fs::path root(output_directory);
+  const fs::path root = io::native_path(output_directory);
   const fs::path images_dir = root / "images";
   const fs::path annotations_dir = root / "annotations";
   const fs::path splits_dir = root / "splits";
@@ -408,7 +409,7 @@ Status Dataset::export_snapshot(const std::string& output_directory,
     if (item.image_path.empty()) {
       continue;
     }
-    const fs::path source(item.image_path);
+    const fs::path source = io::native_path(item.image_path);
     fs::path target = images_dir / source.filename();
     int suffix = 1;
     while (fs::exists(target, ec)) {
@@ -424,7 +425,7 @@ Status Dataset::export_snapshot(const std::string& output_directory,
 
     std::string annotation_name;
     if (!item.annotation_path.empty()) {
-      const fs::path annotation_source(item.annotation_path);
+      const fs::path annotation_source = io::native_path(item.annotation_path);
       const fs::path annotation_target = annotations_dir / (target.filename().string() + ".json");
       fs::copy_file(annotation_source, annotation_target, fs::copy_options::overwrite_existing, ec);
       if (ec) {

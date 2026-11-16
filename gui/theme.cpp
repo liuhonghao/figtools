@@ -262,6 +262,39 @@ QStatusBar QLabel#StatusMessage { color: {{text_dim}}; font-size: 10px; }
 QCheckBox { spacing: 5px; color: {{body_text}}; }
 QCheckBox::indicator { width: 12px; height: 12px; border: 1px solid {{line_strong}}; border-radius: 1px; background: {{surface}}; }
 QCheckBox::indicator:checked { background: {{accent}}; border-color: {{accent}}; }
+
+/* ---- training workbench: task cards + config panels -------------------- */
+QToolButton#TaskCard {
+  background: {{surface}};
+  border: 1px solid {{line}};
+  border-radius: 5px;
+  color: {{body_text}};
+  padding: 10px 6px;
+  text-align: center;
+}
+QToolButton#TaskCard:hover { border-color: {{line_strong}}; background: {{hover}}; }
+QFrame#ConfigCard {
+  background: {{surface}};
+  border: 1px solid {{line}};
+  border-radius: 5px;
+}
+QLabel#Meta { color: {{text_dim}}; }
+QTabWidget#TrainTabs::pane { border: none; background: transparent; }
+
+/* ---- training progress: slim, precise, with an accent fill -------------- */
+QProgressBar#BatchProgress {
+  border: none;
+  background: {{line}};
+  height: 6px;
+  border-radius: 3px;
+  margin: 2px 0 2px 0;
+  text-align: center;
+}
+QProgressBar#BatchProgress::chunk {
+  background: {{accent}};
+  border-radius: 3px;
+  min-width: 4px;
+}
 )";
 
 QString mono_family() {

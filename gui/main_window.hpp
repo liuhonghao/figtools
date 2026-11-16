@@ -33,6 +33,8 @@ class QLabel;
 class QListWidget;
 class QProgressBar;
 class QSpinBox;
+class QSplitter;
+class QStackedWidget;
 class QStackedWidget;
 class QTabWidget;
 class QToolButton;
@@ -40,6 +42,8 @@ class QVBoxLayout;
 class QWidget;
 
 namespace figtools::gui {
+
+class TrainDialog;
 
 class HistogramWidget;
 class ImageCanvas;
@@ -61,6 +65,8 @@ class MainWindow : public QMainWindow {
   void prepareForCapture();
   void openBatchDialog(const QString& suggested_input = QString());
   void openTrainDialog(const QString& data_hint = QString());
+  void showCanvasView();
+  void replayTrainingLog(const QString& path);
   void chooseModel();
   void loadModel(const QString& directory);
   void runInference();
@@ -136,6 +142,10 @@ class MainWindow : public QMainWindow {
   bool first_frame_ = true;
 
   ImageCanvas* canvas_ = nullptr;
+  QStackedWidget* centre_stack_ = nullptr;
+  QSplitter* main_splitter_ = nullptr;
+  QList<int> saved_pane_sizes_;
+  TrainDialog* train_panel_ = nullptr;
   HistogramWidget* histogram_ = nullptr;
   QWidget* chain_container_ = nullptr;
   QVBoxLayout* chain_layout_ = nullptr;

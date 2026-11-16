@@ -3,6 +3,23 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.4.0] - 2026-11-16
+
+### Added
+- **嵌入式训练工作台**：训练不再弹独立窗口，而是嵌入主窗口中央工作区，由「模型 → 训练模型」进入；
+  「返回画布」恢复左右坞。两页签：训练配置（任务卡片 + 双列配置卡）、实时训练（左大日志 + 右上指标表 + 右下双轴曲线）。
+- **论文级图表导出** `scripts/make_paper_figures.py`：从 results.csv 生成 300 DPI PNG + 矢量 PDF
+  的双面板 loss/mAP 曲线与指标曲线，Markdown/LaTeX booktabs 表格，中文/英文双语标签。
+- **TTPLA 输电线路数据集支持** `python/ttpla_to_yolo.py`：LabelMe 多边形 → YOLO 格式，类别归一化（Cable/cable），
+  细线段扩展最小厚度，4K 图降采样到 640px（4.7 GB → 73 MB），8:1:1 划分。
+- `train_yolo.py` 支持 `data_yaml` 预转换数据集，避免复制大图。
+
+### Fixed
+- **中文路径**：路径统一经 `io::native_path`，UTF-8（GUI/JSON）与 GBK（argv）自动识别；
+  image_io / dataset / CLI 全部覆盖。`E:/电力线/图像` 等中文目录可直接打开与训练。
+- 训练监控页进度条与状态控件在布局重构中被误删导致崩溃，已补全；loss 为 0 时显示「—」而非误导性的 0.000。
+- 训练日志过滤 Ultralytics 的模型摘要/进度条噪音，只保留结构化事件与警告。
+
 ## [1.3.0] - 2026-11-16
 
 ### Added

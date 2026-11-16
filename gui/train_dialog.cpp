@@ -4,7 +4,6 @@
 #include "train_dialog.hpp"
 
 #include <QApplication>
-#include <QCloseEvent>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
@@ -16,6 +15,10 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QGridLayout>
+#include <QHeaderView>
+#include <QSplitter>
+#include <QTabWidget>
+#include <QTableWidget>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -30,6 +33,7 @@
 #include <QShowEvent>
 #include <QTimer>
 #include <QSpinBox>
+#include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -37,6 +41,7 @@
 
 #include "python_env.hpp"
 #include "theme.hpp"
+#include "metrics_chart.hpp"
 
 namespace figtools::gui {
 namespace {
@@ -45,10 +50,9 @@ QString format_metric(double value) { return QString::number(value, 'f', 3); }
 
 }  // namespace
 
-TrainDialog::TrainDialog(const QString& data_hint, QWidget* parent) : QDialog(parent) {
+TrainDialog::TrainDialog(const QString& data_hint, QWidget* parent) : QWidget(parent) {
   setWindowTitle(tr("训练模型"));
-  setModal(true);
-  resize(720, 560);
+  resize(980, 680);
   buildUi(data_hint);
 }
 
@@ -59,34 +63,68 @@ TrainDialog::~TrainDialog() {
   }
 }
 
+void TrainDialog::setDataHint(const QString& hint) {
+  if (data_edit_ != nullptr && !hint.isEmpty() && running_ == false) {
+    data_edit_->setText(hint);
+    updateDefaultsForData();
+  }
+}
+
+void TrainDialog::replayLog(const QString& path) {
+  QFile file(path);
+  if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    return;
+  }
+  resetMetrics(true);
+  while (!file.atEnd()) {
+    const QString line = QString::fromUtf8(file.readLine()).trimmed();
+    if (line.startsWith(QLatin1Char('{'))) {
+      // Only replay informational events; "done" would emit modelReady and
+      // trigger a model load in the middle of a UI capture.
+      if (!line.contains(QStringLiteral("\"event\": \"epoch\""))) {
+        continue;  // replay only epoch events for the monitor preview
+      }
+      handleEvent(line);
+    }
+  }
+  file.close();
+  if (tabs_ != nullptr) {
+    tabs_->setCurrentIndex(1);  // show the live monitor page with replayed data
+  }
+}
+
 void TrainDialog::buildUi(const QString& data_hint) {
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(20, 18, 20, 18);
   root->setSpacing(8);
 
-  auto* title = new QLabel(tr("训练模型"), this);
-  title->setFont(theme::ui_font(16, QFont::DemiBold));
+  // ---- header --------------------------------------------------------------
+  auto* title = new QLabel(tr("训练工作台"), this);
+  title->setFont(theme::ui_font(19, QFont::DemiBold));
   root->addWidget(title);
 
   auto* subtitle = new QLabel(
-      tr("训练模型：分类用类文件夹或数据集快照；检测用带标注框的数据集快照。YOLO 需另装 ultralytics，patch 基线无需额外依赖。"),
+      tr("配置训练任务并实时观察训练进程。分类 / 检测 / 分割共用同一套流程。"),
       this);
   subtitle->setObjectName(QStringLiteral("Meta"));
   subtitle->setFont(theme::ui_font(11));
-  subtitle->setWordWrap(true);
   root->addWidget(subtitle);
-  root->addWidget(theme::hairline(this));
 
-  auto* grid = new QGridLayout();
-  grid->setHorizontalSpacing(10);
-  grid->setVerticalSpacing(6);
-  grid->setColumnStretch(1, 1);
+  tabs_ = new QTabWidget(this);
+  tabs_->setObjectName(QStringLiteral("TrainTabs"));
+  tabs_->setDocumentMode(true);
+
+  // ======================= PAGE 1: CONFIGURATION ============================
+  auto* setup_page = new QWidget(tabs_);
+  setup_page->setObjectName(QStringLiteral("TrainSetupPage"));
+  auto* setup_outer = new QVBoxLayout(setup_page);
+  setup_outer->setContentsMargins(4, 14, 4, 4);
+  setup_outer->setSpacing(16);
 
   const auto field_label = [this](const QString& text) {
     auto* label = new QLabel(text, this);
     label->setObjectName(QStringLiteral("Meta"));
     label->setFont(theme::ui_font(11));
-    label->setFixedWidth(64);
     return label;
   };
   const auto inline_label = [this](const QString& text) {
@@ -95,174 +133,289 @@ void TrainDialog::buildUi(const QString& data_hint) {
     label->setFont(theme::ui_font(11));
     return label;
   };
+  const auto browse_button = [this](const QString& text = tr("浏览…")) {
+    auto* button = new QPushButton(text, this);
+    button->setFixedWidth(72);
+    return button;
+  };
 
-  task_combo_ = new QComboBox(this);
-  task_combo_->addItem(tr("图像分类（整图一个标签）"), QStringLiteral("classifier"));
-  task_combo_->addItem(tr("YOLO 目标检测（推荐，需 ultralytics）"), QStringLiteral("yolo"));
-  task_combo_->addItem(tr("目标检测 patch 基线（无需额外依赖）"), QStringLiteral("detector"));
-  task_combo_->setFixedWidth(230);
-  auto* task_row = new QHBoxLayout();
-  task_row->setSpacing(8);
-  task_row->addWidget(task_combo_);
-  task_row->addStretch(1);
-  grid->addWidget(field_label(tr("任务")), 0, 0);
-  grid->addLayout(task_row, 0, 1, 1, 2);
+  // --- task type as three large selectable cards ---------------------------
+  setup_outer->addWidget(theme::section_label(tr("01  选择任务类型"), setup_page));
+  auto* task_cards = new QHBoxLayout();
+  task_cards->setSpacing(10);
+  task_cards->setContentsMargins(0, 0, 0, 0);
+  struct TaskCard {
+    const char* title;
+    const char* detail;
+    const char* value;
+    theme::Glyph glyph;
+  };
+  const TaskCard cards[] = {
+      {QT_TR_NOOP("图像分类"), QT_TR_NOOP("整图一个标签"), "classifier", theme::Glyph::kModel},
+      {QT_TR_NOOP("YOLO 检测"), QT_TR_NOOP("标注框 → 检测模型"), "yolo", theme::Glyph::kDetect},
+      {QT_TR_NOOP("检测基线"), QT_TR_NOOP("无需额外依赖"), "detector", theme::Glyph::kAnnotate},
+  };
+  task_buttons_.clear();
+  for (const TaskCard& card : cards) {
+    auto* button = new QToolButton(setup_page);
+    button->setObjectName(QStringLiteral("TaskCard"));
+    button->setCheckable(true);
+    button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    button->setIcon(theme::icon(card.glyph, theme::colour(theme::kTextDim), 26));
+    button->setIconSize(QSize(26, 26));
+    button->setText(tr("%1\n%2").arg(tr(card.title), tr(card.detail)));
+    button->setFont(theme::ui_font(11));
+    button->setMinimumSize(150, 96);
+    button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    button->setCursor(Qt::PointingHandCursor);
+    button->setProperty("taskValue", QLatin1String(card.value));
+    task_cards->addWidget(button);
+    task_buttons_.push_back(button);
+  }
+  setup_outer->addLayout(task_cards);
 
-  yolo_version_combo_ = new QComboBox(this);
+  // task_combo_ stays as the single source of truth; cards just select it.
+  task_combo_ = new QComboBox(setup_page);
+  task_combo_->addItem(tr("图像分类"), QStringLiteral("classifier"));
+  task_combo_->addItem(tr("YOLO 检测"), QStringLiteral("yolo"));
+  task_combo_->addItem(tr("检测基线"), QStringLiteral("detector"));
+  task_combo_->hide();
+  for (QToolButton* button : task_buttons_) {
+    connect(button, &QToolButton::clicked, this, [this, button]() {
+      const QString value = button->property("taskValue").toString();
+      const int index = task_combo_->findData(value);
+      if (index >= 0) {
+        task_combo_->setCurrentIndex(index);
+      }
+      syncTaskCards();
+    });
+  }
+  connect(task_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+          [this]() {
+            syncTaskCards();
+            applyTaskDefaults();
+          });
+
+  // --- two columns: data/output | model/hyperparameters --------------------
+  auto* columns = new QHBoxLayout();
+  columns->setSpacing(16);
+
+  auto* data_card = new QFrame(setup_page);
+  data_card->setObjectName(QStringLiteral("ConfigCard"));
+  auto* data_layout = new QVBoxLayout(data_card);
+  data_layout->setContentsMargins(16, 12, 16, 14);
+  data_layout->setSpacing(14);
+  data_layout->addWidget(theme::section_label(tr("02  数据与输出"), data_card));
+
+  auto* data_row = new QHBoxLayout();
+  data_row->setSpacing(8);
+  data_edit_ = new QLineEdit(data_card);
+  data_edit_->setPlaceholderText(tr("数据集目录（类文件夹 / 快照 / YOLO data.yaml）"));
+  auto* data_button = browse_button();
+  data_row->addWidget(field_label(tr("数据")));
+  data_row->addWidget(data_edit_, 1);
+  data_row->addWidget(data_button);
+  data_layout->addLayout(data_row);
+
+  auto* output_row = new QHBoxLayout();
+  output_row->setSpacing(8);
+  output_edit_ = new QLineEdit(data_card);
+  output_edit_->setPlaceholderText(tr("模型包输出目录"));
+  auto* output_button = browse_button();
+  output_row->addWidget(field_label(tr("输出")));
+  output_row->addWidget(output_edit_, 1);
+  output_row->addWidget(output_button);
+  data_layout->addLayout(output_row);
+
+  auto* python_row = new QHBoxLayout();
+  python_row->setSpacing(8);
+  python_edit_ = new QLineEdit(data_card);
+  auto* python_button = browse_button();
+  python_row->addWidget(field_label(tr("Python")));
+  python_row->addWidget(python_edit_, 1);
+  python_row->addWidget(python_button);
+  data_layout->addLayout(python_row);
+  columns->addWidget(data_card, 1);
+
+  auto* model_card = new QFrame(setup_page);
+  model_card->setObjectName(QStringLiteral("ConfigCard"));
+  auto* model_layout = new QVBoxLayout(model_card);
+  model_layout->setContentsMargins(16, 12, 16, 14);
+  model_layout->setSpacing(14);
+  model_layout->addWidget(theme::section_label(tr("03  模型与训练参数"), model_card));
+
+  auto* version_row = new QHBoxLayout();
+  version_row->setSpacing(8);
+  yolo_version_combo_ = new QComboBox(model_card);
   const auto add_yolo = [this](const QString& label, const QString& value) {
     yolo_version_combo_->addItem(label, value);
   };
   add_yolo(tr("YOLO26n · 最新（推荐）"), QStringLiteral("yolo26n"));
-  add_yolo(tr("YOLO26s"), QStringLiteral("yolo26s"));
-  add_yolo(tr("YOLO26m"), QStringLiteral("yolo26m"));
-  add_yolo(tr("YOLO26l"), QStringLiteral("yolo26l"));
+  add_yolo(tr("YOLO26s / m / l"), QStringLiteral("yolo26s"));
   add_yolo(tr("YOLO12n"), QStringLiteral("yolo12n"));
   add_yolo(tr("YOLO11n · 稳定"), QStringLiteral("yolo11n"));
-  add_yolo(tr("YOLO11s"), QStringLiteral("yolo11s"));
-  add_yolo(tr("YOLO11m"), QStringLiteral("yolo11m"));
-  add_yolo(tr("YOLOv8n"), QStringLiteral("yolov8n"));
-  add_yolo(tr("YOLOv8s"), QStringLiteral("yolov8s"));
-  add_yolo(tr("YOLOv10n"), QStringLiteral("yolov10n"));
-  add_yolo(tr("YOLOv9c"), QStringLiteral("yolov9c"));
-  add_yolo(tr("YOLOv5nu"), QStringLiteral("yolov5nu"));
-  add_yolo(tr("YOLOv3-tiny"), QStringLiteral("yolov3-tiny"));
-  yolo_version_combo_->setFixedWidth(230);
-  yolo_from_scratch_ = new QCheckBox(tr("从零训练"), this);
+  add_yolo(tr("YOLO11s / m"), QStringLiteral("yolo11s"));
+  add_yolo(tr("YOLOv8n / s"), QStringLiteral("yolov8n"));
+  add_yolo(tr("YOLOv10 / v9 / v5 / v3"), QStringLiteral("yolov10n"));
+  yolo_version_combo_->setMinimumWidth(220);
+  yolo_from_scratch_ = new QCheckBox(tr("从零训练"), model_card);
   yolo_from_scratch_->setToolTip(
-      tr("勾选：用本地模型结构从零训练，无需下载权重但收敛慢；"
-         "不勾选：尝试加载预训练权重（需联网，收敛快）"));
+      tr("勾选：本地模型结构，无需下载；取消：加载预训练权重（需联网）"));
   yolo_from_scratch_->setChecked(true);
-  auto* yolo_row = new QHBoxLayout();
-  yolo_row->setSpacing(8);
-  yolo_row->addWidget(yolo_version_combo_);
-  yolo_row->addWidget(yolo_from_scratch_);
-  yolo_row->addStretch(1);
-  grid->addWidget(field_label(tr("YOLO 版本")), 1, 0);
-  grid->addLayout(yolo_row, 1, 1, 1, 2);
+  version_row->addWidget(field_label(tr("版本")));
+  version_row->addWidget(yolo_version_combo_, 1);
+  version_row->addWidget(yolo_from_scratch_);
+  model_layout->addLayout(version_row);
 
-  connect(task_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-          [this]() { applyTaskDefaults(); });
-
-  data_edit_ = new QLineEdit(this);
-  data_edit_->setPlaceholderText(tr("数据目录（每类一个子文件夹）"));
-  auto* data_button = new QPushButton(tr("浏览…"), this);
-  data_button->setFixedWidth(68);
-  grid->addWidget(field_label(tr("数据目录")), 2, 0);
-  grid->addWidget(data_edit_, 2, 1);
-  grid->addWidget(data_button, 2, 2);
-
-  output_edit_ = new QLineEdit(this);
-  output_edit_->setPlaceholderText(tr("模型包输出目录"));
-  auto* output_button = new QPushButton(tr("浏览…"), this);
-  output_button->setFixedWidth(68);
-  grid->addWidget(field_label(tr("模型输出")), 3, 0);
-  grid->addWidget(output_edit_, 3, 1);
-  grid->addWidget(output_button, 3, 2);
-
-  arch_combo_ = new QComboBox(this);
+  arch_combo_ = new QComboBox(model_card);
   arch_combo_->addItem(QStringLiteral("ResNet-18"), QStringLiteral("resnet18"));
   arch_combo_->addItem(tr("MobileNetV3-Small"), QStringLiteral("mobilenet_v3_small"));
   arch_combo_->addItem(tr("小型 CNN（快速）"), QStringLiteral("smallcnn"));
-  arch_combo_->setFixedWidth(170);
-  input_spin_ = new QSpinBox(this);
-  input_spin_->setRange(48, 512);
-  input_spin_->setSingleStep(16);
-  input_spin_->setValue(224);
-  input_spin_->setFixedWidth(84);
+  arch_combo_->setMinimumWidth(150);
+  input_spin_ = new QSpinBox(model_card);
+  input_spin_->setRange(48, 2048);
+  input_spin_->setSingleStep(32);
   input_spin_->setSuffix(QStringLiteral(" px"));
   auto* arch_row = new QHBoxLayout();
   arch_row->setSpacing(8);
-  arch_row->addWidget(arch_combo_);
-  arch_row->addSpacing(10);
+  arch_row->addWidget(field_label(tr("架构")));
+  arch_row->addWidget(arch_combo_, 1);
   arch_row->addWidget(inline_label(tr("输入")));
   arch_row->addWidget(input_spin_);
-  arch_row->addStretch(1);
-  grid->addWidget(field_label(tr("模型")), 4, 0);
-  grid->addLayout(arch_row, 4, 1, 1, 2);
+  model_layout->addLayout(arch_row);
 
-  epochs_spin_ = new QSpinBox(this);
+  epochs_spin_ = new QSpinBox(model_card);
   epochs_spin_->setRange(1, 1000);
-  epochs_spin_->setValue(20);
-  epochs_spin_->setFixedWidth(74);
-  batch_spin_ = new QSpinBox(this);
+  batch_spin_ = new QSpinBox(model_card);
   batch_spin_->setRange(1, 256);
-  batch_spin_->setValue(16);
-  batch_spin_->setFixedWidth(74);
-  lr_spin_ = new QDoubleSpinBox(this);
+  lr_spin_ = new QDoubleSpinBox(model_card);
   lr_spin_->setRange(1e-5, 1.0);
   lr_spin_->setDecimals(4);
   lr_spin_->setSingleStep(0.0005);
-  lr_spin_->setValue(0.001);
-  lr_spin_->setFixedWidth(96);
   auto* optim_row = new QHBoxLayout();
   optim_row->setSpacing(8);
+  optim_row->addWidget(field_label(tr("优化")));
   optim_row->addWidget(inline_label(tr("轮数")));
   optim_row->addWidget(epochs_spin_);
-  optim_row->addSpacing(8);
   optim_row->addWidget(inline_label(tr("批大小")));
   optim_row->addWidget(batch_spin_);
-  optim_row->addSpacing(8);
   optim_row->addWidget(inline_label(tr("学习率")));
-  optim_row->addWidget(lr_spin_);
-  optim_row->addStretch(1);
-  grid->addWidget(field_label(tr("优化")), 5, 0);
-  grid->addLayout(optim_row, 5, 1, 1, 2);
+  optim_row->addWidget(lr_spin_, 1);
+  optim_row->addSpacing(12);
+  model_layout->addLayout(optim_row);
 
-  device_combo_ = new QComboBox(this);
+  device_combo_ = new QComboBox(model_card);
   device_combo_->addItem(tr("自动"), QStringLiteral("auto"));
   device_combo_->addItem(QStringLiteral("CPU"), QStringLiteral("cpu"));
   device_combo_->addItem(QStringLiteral("CUDA"), QStringLiteral("cuda"));
-  device_combo_->setFixedWidth(120);
   auto* device_row = new QHBoxLayout();
   device_row->setSpacing(8);
-  device_row->addWidget(device_combo_);
-  device_row->addStretch(1);
-  grid->addWidget(field_label(tr("设备")), 6, 0);
-  grid->addLayout(device_row, 6, 1, 1, 2);
+  device_row->addWidget(field_label(tr("设备")));
+  device_row->addWidget(device_combo_, 1);
+  model_layout->addLayout(device_row);
+  columns->addWidget(model_card, 1);
+  setup_outer->addLayout(columns, 1);
+  columns->setAlignment(Qt::AlignTop);
+  tabs_->addTab(setup_page, tr("训练配置"));
 
-  python_edit_ = new QLineEdit(this);
-  auto* python_button = new QPushButton(tr("浏览…"), this);
-  python_button->setFixedWidth(68);
-  grid->addWidget(field_label(tr("Python")), 7, 0);
-  grid->addWidget(python_edit_, 7, 1);
-  grid->addWidget(python_button, 7, 2);
+  // ======================= PAGE 2: LIVE MONITOR =============================
+  // Left: large full training log. Right: metrics table on top, curves below.
+  auto* monitor_page = new QWidget(tabs_);
+  auto* monitor_layout = new QVBoxLayout(monitor_page);
+  monitor_layout->setContentsMargins(4, 10, 4, 4);
+  monitor_layout->setSpacing(8);
 
-  root->addLayout(grid);
-
-  dataset_label_ = new QLabel(tr("尚未开始"), this);
+  dataset_label_ = new QLabel(tr("尚未开始"), monitor_page);
   dataset_label_->setObjectName(QStringLiteral("Meta"));
   dataset_label_->setFont(theme::ui_font(11));
-  root->addWidget(dataset_label_);
+  monitor_layout->addWidget(dataset_label_);
 
-  progress_ = new QProgressBar(this);
-  progress_->setObjectName(QStringLiteral("BatchProgress"));
-  progress_->setRange(0, 1);
-  progress_->setValue(0);
-  progress_->setTextVisible(false);
-  progress_->hide();
-  root->addWidget(progress_);
+  auto* monitor_cols = new QHBoxLayout();
+  monitor_cols->setSpacing(12);
 
-  status_label_ = new QLabel(tr("就绪"), this);
-  status_label_->setObjectName(QStringLiteral("Meta"));
-  status_label_->setFont(theme::mono_font(11));
-  root->addWidget(status_label_);
-
-  root->addWidget(theme::dock_title(tr("训练日志"), this));
-  log_ = new QListWidget(this);
+  // -- left: large training log ---------------------------------------------
+  auto* log_panel = new QFrame(monitor_page);
+  log_panel->setObjectName(QStringLiteral("ConfigCard"));
+  auto* log_layout = new QVBoxLayout(log_panel);
+  log_layout->setContentsMargins(0, 0, 0, 0);
+  log_layout->setSpacing(0);
+  log_layout->addWidget(theme::dock_title(tr("完整训练日志"), log_panel));
+  log_ = new QListWidget(log_panel);
   log_->setFont(theme::mono_font(11));
   log_->setSelectionMode(QAbstractItemView::NoSelection);
-  log_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  root->addWidget(log_, 1);
-  appendLog(tr("选择数据目录与输出位置，然后点“开始训练”。"), theme::colour(theme::kTextFaint));
+  log_->setSpacing(3);
+  log_layout->addWidget(log_, 1);
+  monitor_cols->addWidget(log_panel, 4);
+
+  // -- right: vertical split (metrics table above, curves below) ------------
+  auto* right_panel = new QWidget(monitor_page);
+  auto* right_layout = new QVBoxLayout(right_panel);
+  right_layout->setContentsMargins(0, 0, 0, 0);
+  right_layout->setSpacing(12);
+
+  auto* metrics_panel = new QFrame(right_panel);
+  metrics_panel->setObjectName(QStringLiteral("ConfigCard"));
+  auto* metrics_layout = new QVBoxLayout(metrics_panel);
+  metrics_layout->setContentsMargins(0, 0, 0, 0);
+  metrics_layout->setSpacing(0);
+  metrics_layout->addWidget(theme::dock_title(tr("每轮指标"), metrics_panel));
+  metrics_table_ = new QTableWidget(metrics_panel);
+  metrics_table_->setColumnCount(5);
+  metrics_table_->setHorizontalHeaderLabels(
+      {tr("轮次"), tr("mAP50"), tr("mAP50-95"), tr("box_loss"), tr("cls_loss")});
+  metrics_table_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+  metrics_table_->verticalHeader()->hide();
+  metrics_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  metrics_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
+  metrics_table_->setAlternatingRowColors(true);
+  metrics_table_->setFont(theme::mono_font(10));
+  metrics_layout->addWidget(metrics_table_, 1);
+  right_layout->addWidget(metrics_panel, 1);
+
+  auto* chart_panel = new QFrame(right_panel);
+  chart_panel->setObjectName(QStringLiteral("ConfigCard"));
+  auto* chart_layout = new QVBoxLayout(chart_panel);
+  chart_layout->setContentsMargins(0, 0, 0, 0);
+  chart_layout->setSpacing(0);
+  chart_layout->addWidget(theme::dock_title(tr("训练曲线"), chart_panel));
+  chart_ = new MetricsChart(chart_panel);
+  chart_layout->addWidget(chart_, 1);
+  right_layout->addWidget(chart_panel, 1);
+
+  monitor_cols->addWidget(right_panel, 5);
+  monitor_layout->addLayout(monitor_cols, 1);
+  tabs_->addTab(monitor_page, tr("实时训练"));
+
+  root->addWidget(tabs_, 1);
+
+  // A single slim status line: concise state on the left, progress on the right.
+  auto* status_row = new QHBoxLayout();
+  status_row->setSpacing(12);
+  status_label_ = new QLabel(tr("就绪"), this);
+  status_label_->setObjectName(QStringLiteral("Meta"));
+  status_label_->setFont(theme::ui_font(11));
+  status_row->addWidget(status_label_);
+  progress_ = new QProgressBar(this);
+  progress_->setObjectName(QStringLiteral("BatchProgress"));
+  progress_->setRange(0, 100);
+  progress_->setValue(0);
+  progress_->setTextVisible(false);
+  progress_->setFixedWidth(240);
+  status_row->addWidget(progress_);
+  status_row->addStretch(1);
+  root->addLayout(status_row);
+
+  appendLog(tr("选择数据与参数后点“开始训练”，训练过程在此实时显示。"),
+            theme::colour(theme::kTextFaint));
 
   auto* buttons = new QHBoxLayout();
   buttons->setSpacing(8);
   open_button_ = new QPushButton(tr("打开模型目录"), this);
   open_button_->setEnabled(false);
-  cancel_button_ = new QPushButton(tr("关闭"), this);
+  cancel_button_ = new QPushButton(tr("返回画布"), this);
   start_button_ = new QPushButton(tr("开始训练"), this);
   start_button_->setObjectName(QStringLiteral("Primary"));
-  start_button_->setMinimumWidth(104);
+  start_button_->setMinimumWidth(120);
   buttons->addWidget(open_button_);
   buttons->addStretch(1);
   buttons->addWidget(cancel_button_);
@@ -322,6 +475,24 @@ QString TrainDialog::taskKind() const {
 bool TrainDialog::isDetection() const {
   const QString kind = taskKind();
   return kind == QLatin1String("detector") || kind == QLatin1String("yolo");
+}
+
+void TrainDialog::syncTaskCards() {
+  const QString current = taskKind();
+  for (QToolButton* button : task_buttons_) {
+    if (button == nullptr) {
+      continue;
+    }
+    const bool active = button->property("taskValue").toString() == current;
+    button->setChecked(active);
+    button->setStyleSheet(active ? QStringLiteral(
+        "QToolButton#TaskCard { border: 2px solid %1; border-radius: 6px; "
+        "background: %2; color: %3; padding: 8px; }")
+        .arg(theme::colour(theme::kAccent).name(),
+             theme::colour(theme::kAccentSoft).name(),
+             theme::colour(theme::kAccentInk).name())
+        : QString());
+  }
 }
 
 void TrainDialog::applyTaskDefaults() {
@@ -432,6 +603,14 @@ void TrainDialog::start() {
   job.insert(QStringLiteral("seed"), 2026);
   job.insert(QStringLiteral("val_ratio"), 0.2);
   if (kind == QLatin1String("yolo")) {
+    // An advanced/optional override: point at a pre-converted YOLO dataset
+    // (data.yaml) instead of exporting the snapshot. Used for large external
+    // datasets like TTPLA where copying images is impractical.
+    const QString prepared =
+        QSettings().value(QStringLiteral("train/data_yaml")).toString();
+    if (!prepared.isEmpty()) {
+      job.insert(QStringLiteral("data_yaml"), QDir::toNativeSeparators(prepared));
+    }
     job.insert(QStringLiteral("imgsz"), input_spin_->value());
     const QString version = yolo_version_combo_->currentData().toString();
     // From scratch uses the local YAML (no download); otherwise ask for the
@@ -468,6 +647,11 @@ void TrainDialog::start() {
   settings.setValue(QStringLiteral("python/executable"), python);
 
   log_->clear();
+  const bool yolo_task = taskKind() == QLatin1String("yolo");
+  resetMetrics(yolo_task);
+  if (tabs_ != nullptr) {
+    tabs_->setCurrentIndex(1);  // jump to live monitoring as training begins
+  }
   succeeded_ = false;
   open_button_->setEnabled(false);
   last_model_dir_.clear();
@@ -502,7 +686,7 @@ void TrainDialog::start() {
 
 void TrainDialog::cancel() {
   if (!running_) {
-    reject();
+    emit closed();
     return;
   }
   status_label_->setText(tr("正在停止训练…"));
@@ -533,13 +717,19 @@ void TrainDialog::readStdout() {
 
 void TrainDialog::readStderr() {
   const QString text = QString::fromUtf8(process_->readAllStandardError());
-  for (const QString& line : text.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
-    // The worker mirrors every epoch to stderr for people running it by hand.
-    // Here the structured "epoch" event already produced a line.
-    if (line.trimmed().startsWith(QStringLiteral("epoch "))) {
-      continue;
+  for (QString line : text.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
+    line = line.trimmed();
+    // Ultralytics floods stderr with model summaries, AMP checks and progress
+    // bars. The worker already reports structured progress over stdout, so
+    // keep the log readable by surfacing only warnings and errors here.
+    const QString lowered = line.toLower();
+    if (lowered.contains(QStringLiteral("error")) ||
+        lowered.contains(QStringLiteral("warning")) ||
+        lowered.contains(QStringLiteral("traceback")) ||
+        lowered.contains(QStringLiteral("exception")) ||
+        lowered.contains(QStringLiteral("failed"))) {
+      appendLog(line, theme::colour(theme::kWarning));
     }
-    appendLog(line.trimmed(), theme::colour(theme::kTextFaint));
   }
 }
 
@@ -581,24 +771,24 @@ void TrainDialog::handleEvent(const QString& line) {
                               : event.value(QStringLiteral("val_accuracy")).toDouble();
     progress_->setRange(1, std::max(1, total));
     progress_->setValue(epoch);
-    status_label_->setText(tr("第 %1/%2 轮  ·  loss %3  ·  %4")
+    const QString loss_text = loss > 0.0 ? format_metric(loss) : QStringLiteral("—");
+    status_label_->setText(tr("第 %1/%2 轮   ·   mAP50 %3")
                                .arg(epoch)
                                .arg(total)
-                               .arg(format_metric(loss), format_metric(score)));
+                               .arg(format_metric(score)));
+    addMetricRow(event, yolo);
     if (yolo) {
-      appendLog(tr("轮 %1/%2  box_loss %3  cls_loss %4  mAP50 %5  mAP50-95 %6")
+      appendLog(tr("Epoch %1/%2   mAP50 %3   mAP50-95 %4")
                     .arg(epoch)
                     .arg(total)
-                    .arg(format_metric(loss),
-                         format_metric(event.value(QStringLiteral("cls_loss")).toDouble()),
-                         format_metric(score),
+                    .arg(format_metric(score),
                          format_metric(event.value(QStringLiteral("mAP50_95")).toDouble())),
                 theme::colour(theme::kTextDim));
     } else {
-      appendLog(tr("轮 %1/%2  loss %3  train %4  val %5")
+      appendLog(tr("Epoch %1/%2   loss %3   train %4   val %5")
                     .arg(epoch)
                     .arg(total)
-                    .arg(format_metric(loss),
+                    .arg(loss_text,
                          format_metric(event.value(QStringLiteral("train_accuracy")).toDouble()),
                          format_metric(score)),
                 theme::colour(theme::kTextDim));
@@ -642,6 +832,52 @@ void TrainDialog::handleFinished(int exit_code, int exit_status) {
   }
 }
 
+void TrainDialog::resetMetrics(bool yolo) {
+  history_.clear();
+  if (metrics_table_ != nullptr) {
+    metrics_table_->setRowCount(0);
+    metrics_table_->setHorizontalHeaderLabels(
+        yolo ? QStringList({tr("轮次"), tr("mAP50"), tr("mAP50-95"), tr("box_loss"), tr("cls_loss")})
+             : QStringList({tr("轮次"), tr("验证准确率"), tr("训练准确率"), tr("loss"), tr("—")}));
+  }
+  if (chart_ != nullptr) {
+    chart_->setLossLabel(yolo ? tr("box_loss") : tr("loss"));
+    chart_->setScoreLabel(yolo ? tr("mAP50") : tr("val_acc"));
+    chart_->clear();
+  }
+}
+
+void TrainDialog::addMetricRow(const QJsonObject& event, bool yolo) {
+  if (metrics_table_ == nullptr || chart_ == nullptr) {
+    return;
+  }
+  const int epoch = event.value(QStringLiteral("epoch")).toInt();
+  double loss = yolo ? event.value(QStringLiteral("box_loss")).toDouble()
+                     : event.value(QStringLiteral("train_loss")).toDouble();
+  const double score = yolo ? event.value(QStringLiteral("mAP50")).toDouble()
+                            : event.value(QStringLiteral("val_accuracy")).toDouble();
+  const double second = yolo ? event.value(QStringLiteral("mAP50_95")).toDouble()
+                             : event.value(QStringLiteral("train_accuracy")).toDouble();
+  const double cls = yolo ? event.value(QStringLiteral("cls_loss")).toDouble() : 0.0;
+
+  const int row = metrics_table_->rowCount();
+  metrics_table_->insertRow(row);
+  const auto cell = [this, row](int column, const QString& text) {
+    auto* item = new QTableWidgetItem(text);
+    item->setTextAlignment(Qt::AlignCenter);
+    metrics_table_->setItem(row, column, item);
+  };
+  cell(0, QString::number(epoch));
+  cell(1, format_metric(score));
+  cell(2, yolo ? format_metric(second) : format_metric(second));
+  cell(3, loss > 0.0 ? format_metric(loss) : QStringLiteral("—"));
+  cell(4, yolo && cls > 0.0 ? format_metric(cls) : QStringLiteral("—"));
+
+  history_.push_back({static_cast<double>(epoch), loss, score});
+  chart_->setData(history_);
+  metrics_table_->scrollToBottom();
+}
+
 void TrainDialog::appendLog(const QString& text, const QColor& colour) {
   auto* item = new QListWidgetItem(text, log_);
   item->setForeground(colour);
@@ -664,22 +900,12 @@ void TrainDialog::setRunning(bool running) {
 }
 
 void TrainDialog::showEvent(QShowEvent* event) {
-  QDialog::showEvent(event);
+  QWidget::showEvent(event);
   // Headless smoke test: start as soon as the dialog is shown.
   if (qEnvironmentVariableIsSet("FIGTOOLS_TRAIN_AUTOSTART") && !running_) {
     QTimer::singleShot(300, this, &TrainDialog::start);
   }
 }
 
-void TrainDialog::closeEvent(QCloseEvent* event) {
-  if (running_) {
-    running_ = false;
-    if (process_ != nullptr) {
-      process_->kill();
-      process_->waitForFinished(3000);
-    }
-  }
-  event->accept();
-}
 
 }  // namespace figtools::gui

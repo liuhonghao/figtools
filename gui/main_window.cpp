@@ -72,7 +72,7 @@
 #include "widgets.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.3.0"
+#define FIGTOOLS_VERSION "1.4.0"
 #endif
 
 namespace figtools::gui {
@@ -373,14 +373,20 @@ void MainWindow::buildUi() {
   tabs_->addTab(buildDatasetPage(tabs_), tr("数据集"));
   left_layout->addWidget(tabs_, 1);
 
-  // ---- centre: view toolbar + canvas --------------------------------------
+  // ---- centre: stacked views (canvas | embedded training workbench) -------
   auto* centre = new QWidget(horizontal);
   auto* centre_layout = new QVBoxLayout(centre);
   centre_layout->setContentsMargins(0, 0, 0, 0);
   centre_layout->setSpacing(0);
-  centre_layout->addWidget(buildViewToolbar(centre));
 
-  canvas_ = new ImageCanvas(centre);
+  centre_stack_ = new QStackedWidget(centre);
+  auto* canvas_view = new QWidget(centre_stack_);
+  auto* canvas_layout = new QVBoxLayout(canvas_view);
+  canvas_layout->setContentsMargins(0, 0, 0, 0);
+  canvas_layout->setSpacing(0);
+  canvas_layout->addWidget(buildViewToolbar(canvas_view));
+
+  canvas_ = new ImageCanvas(canvas_view);
   canvas_->setAnnotationSet(&annotations_);
   canvas_->setAnnotationCallback([this]() { refreshAnnotationLists(); });
   canvas_->setStatusCallback([this](const QString& text) { notify(text, 1500); });
@@ -399,7 +405,14 @@ void MainWindow::buildUi() {
     }
     status_position_->setText(QStringLiteral("X %1  Y %2").arg(point.x()).arg(point.y()));
   });
-  centre_layout->addWidget(canvas_, 1);
+  canvas_layout->addWidget(canvas_, 1);
+  centre_stack_->addWidget(canvas_view);  // page 0: image canvas
+
+  train_panel_ = new TrainDialog(QString(), centre_stack_);
+  connect(train_panel_, &TrainDialog::modelReady, this, &MainWindow::loadModel);
+  connect(train_panel_, &TrainDialog::closed, this, &MainWindow::showCanvasView);
+  centre_stack_->addWidget(train_panel_);  // page 1: embedded training workbench
+  centre_layout->addWidget(centre_stack_, 1);
 
   // ---- right: inspector dock ----------------------------------------------
   auto* right = buildFactsPanel(horizontal);
@@ -414,6 +427,7 @@ void MainWindow::buildUi() {
   horizontal->setStretchFactor(0, 0);
   horizontal->setStretchFactor(1, 1);
   horizontal->setStretchFactor(2, 0);
+  main_splitter_ = horizontal;
   horizontal->setSizes({310, 900, 270});
 
   body->addWidget(horizontal);
@@ -528,7 +542,10 @@ void MainWindow::buildTopBar(QVBoxLayout* outer) {
   layout->addSpacing(2);
   theme_button_ = new QToolButton(bar);
   theme_button_->setIcon(theme::icon(theme::Glyph::kTheme));
-  theme_button_->setToolTip(tr("切换界面主题（暖色 / 冷色）"));
+  theme_button_->setText(theme::mode_name());
+  theme_button_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+  theme_button_->setFont(theme::ui_font(10));
+  theme_button_->setToolTip(tr("点击切换界面主题（当前：%1）").arg(theme::mode_name()));
   connect(theme_button_, &QToolButton::clicked, this, &MainWindow::toggleTheme);
   layout->addWidget(theme_button_);
   layout->addStretch(1);
@@ -874,7 +891,8 @@ void MainWindow::toggleTheme() {
     widget->update();
   }
   if (theme_button_ != nullptr) {
-    theme_button_->setToolTip(tr("当前：%1 · 点击切换").arg(theme::mode_name()));
+    theme_button_->setText(theme::mode_name());
+    theme_button_->setToolTip(tr("点击切换界面主题（当前：%1）").arg(theme::mode_name()));
   }
   notify(tr("已切换到%1主题").arg(theme::mode_name()), 2500);
 }
@@ -2205,13 +2223,44 @@ void MainWindow::loadSample() {
 // ---------------------------------------------------------------------------
 
 void MainWindow::openTrainDialog(const QString& data_hint) {
+  if (train_panel_ == nullptr || centre_stack_ == nullptr) {
+    return;
+  }
   const QString hint = !data_hint.isEmpty()
                            ? data_hint
                            : (dataset_path_.isEmpty() ? last_open_dir_ : dataset_path_);
-  TrainDialog dialog(hint, this);
-  connect(&dialog, &TrainDialog::modelReady, this,
-          [this](const QString& directory) { loadModel(directory); });
-  dialog.exec();
+  // Refresh the data hint if the caller provided one; keep other fields.
+  if (!hint.isEmpty()) {
+    train_panel_->setDataHint(hint);
+  }
+  centre_stack_->setCurrentWidget(train_panel_);
+  // Give the training workbench the full width: collapse the project tree and
+  // inspector so the form breathes instead of being squeezed into the centre.
+  if (main_splitter_ != nullptr) {
+    // Pane 0 = project tree, pane 2 = inspector; pane 1 is the centre we keep.
+    if (QWidget* left = main_splitter_->widget(0)) left->hide();
+    if (QWidget* right = main_splitter_->widget(2)) right->hide();
+  }
+  notify(tr("训练工作台已打开 · 设置参数后点“开始训练”"), 3000);
+}
+
+void MainWindow::replayTrainingLog(const QString& path) {
+  if (train_panel_ != nullptr) {
+    train_panel_->replayLog(path);
+  }
+}
+
+void MainWindow::showCanvasView() {
+  if (centre_stack_ != nullptr && canvas_ != nullptr) {
+    centre_stack_->setCurrentIndex(0);
+  }
+  if (main_splitter_ != nullptr) {
+    if (QWidget* left = main_splitter_->widget(0)) left->show();
+    if (QWidget* right = main_splitter_->widget(2)) right->show();
+    if (!saved_pane_sizes_.isEmpty()) {
+      main_splitter_->setSizes(saved_pane_sizes_);
+    }
+  }
 }
 
 void MainWindow::chooseModel() {

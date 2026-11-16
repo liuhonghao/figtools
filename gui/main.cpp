@@ -12,10 +12,11 @@
 #include <QToolButton>
 
 #include "main_window.hpp"
+#include "train_dialog.hpp"
 #include "theme.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.3.0"
+#define FIGTOOLS_VERSION "1.4.0"
 #endif
 
 int main(int argc, char** argv) {
@@ -78,6 +79,19 @@ int main(int argc, char** argv) {
     }
     window.openBatchDialog(directory);
     return 0;
+  }
+
+  const int replay_index = arguments.indexOf(QStringLiteral("--replay"));
+  const QString replay_log = (replay_index >= 0 && replay_index + 1 < arguments.size())
+                                 ? arguments.at(replay_index + 1)
+                                 : QString();
+  if (arguments.contains(QStringLiteral("--show-train"))) {
+    QTimer::singleShot(300, &window, [&window, replay_log]() {
+      window.openTrainDialog();
+      if (!replay_log.isEmpty()) {
+        window.replayTrainingLog(replay_log);
+      }
+    });
   }
 
   const int train_index = arguments.indexOf(QStringLiteral("--train-dialog"));

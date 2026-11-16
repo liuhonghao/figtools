@@ -25,7 +25,8 @@
 | **v1.1** | 工作台重做（Ribbon + 项目树 + 属性坞 + 输出坞）；YOLO 训练/推理接入 | ✅ 可用 |
 | **v1.2** | JPEG/WebP/TGA 解码、大图常驻内存恒定、质量指标、pHash 近重复、YOLO 真训练、Windows 发布包 | ✅ 可用 |
 | **v1.3** | 暖色/冷色主题切换、YOLO 版本选择(v3-v26)、长驻推理服务、实例分割、OCR 入口 | ✅ 可用 |
-| v1.4 | C++ ONNX Runtime 推理（免 Python）、长驻训练服务 | 规划中 |
+| **v1.4** | 嵌入式训练工作台（配置/实时监控双页）、论文级图表导出、中文路径、TTPLA 支持 | ✅ 可用 |
+| v1.5 | C++ ONNX Runtime 推理（免 Python）、长驻训练服务 | 规划中 |
 | v1.0 | 插件 ABI、批量任务中心、团队模式 | 规划中 |
 
 ![workbench](docs/images/workbench.png)
@@ -45,6 +46,10 @@
 ![detection](docs/images/detection.png)
 
 ![detector training](docs/images/detect_training.png)
+
+![training workbench](docs/images/training.png)
+
+![training monitor](docs/images/training_monitor.png)
 
 当前仓库是**可运行的纵向切片**，不是界面原型：`figtools demo` 会真的生成图像、跑处理链、写出结果并给出 PSNR/SSIM。
 
@@ -66,6 +71,13 @@ python python/smoke_test.py
 loss / 训练精度 / 验证精度；**模型 → 载入模型…** 之后按 `Ctrl+R` 对当前图像推理，
 结果同时出现在右栏和画布上的赤陶色标签里。解释器会自动在 `~/.conda/envs` 中找带 torch 的环境，
 也可用 `FIGTOOLS_PYTHON` 指定。详见 [python/README.md](python/README.md)。
+
+**训练工作台**：从「模型 → 训练模型」打开，嵌入主窗口工作区（点「返回画布」回到图像视图）。两个页签：
+
+- **训练配置**：三张任务卡片（分类 / YOLO 检测 / 检测基线）选任务，数据与参数分两列卡片填写，占满宽度、无冗余留白。
+- **实时训练**：左侧完整日志（等宽字体、逐轮追加），右侧上方每轮指标表、下方双 Y 轴曲线（loss 左轴 / mAP 右轴，各用真实数值刻度）。训练进度以细条显示在状态行。
+
+训练完成后可用 `scripts/make_paper_figures.py` 从 Ultralytics `results.csv` 一键生成**论文级**图表：300 DPI PNG + 矢量 PDF，双面板训练曲线（loss / mAP）、指标曲线，以及 Markdown / LaTeX booktabs 表格。支持多种中英文字体。
 
 **界面主题**：顶栏右侧的主题按钮（或「视图 → 切换主题」）在暖色 / 冷色间切换，偏好会保存。两套主题共用布局与控件，只换配色：暖色是米灰 + 赤陶强调，冷色是蓝灰 + 钢蓝强调；画布始终深色以保证看图准确。
 

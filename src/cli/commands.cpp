@@ -4,12 +4,13 @@
 #include "cli/commands.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.3.0"
+#define FIGTOOLS_VERSION "1.4.0"
 #endif
 
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <fstream>
 #include <filesystem>
 #include <string>
 #include <utility>
@@ -23,24 +24,38 @@
 #include "figtools/ops/registry.hpp"
 #include "figtools/batch/batch.hpp"
 #include "figtools/pipeline/executor.hpp"
+#include "figtools/io/path.hpp"
 #include "figtools/json/json.hpp"
 #include "figtools/pipeline/recipe.hpp"
 
 namespace figtools::cli {
 namespace {
 
+// Paths are UTF-8; fopen() on Windows uses the ANSI code page and breaks on
+// Chinese filenames. Route through native_path() and standard streams.
+bool read_text(const std::string& path, std::string* text) {
+  std::ifstream stream(io::native_path(path), std::ios::binary);
+  if (!stream) {
+    return false;
+  }
+  text->assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+  return true;
+}
+
+bool write_text(const std::string& path, const std::string& text) {
+  std::ofstream stream(io::native_path(path), std::ios::binary | std::ios::trunc);
+  if (!stream) {
+    return false;
+  }
+  stream.write(text.data(), static_cast<std::streamsize>(text.size()));
+  return static_cast<bool>(stream);
+}
+
 Result<Recipe> read_recipe_file(const std::string& path) {
-  std::FILE* file = std::fopen(path.c_str(), "rb");
-  if (file == nullptr) {
+  std::string text;
+  if (!read_text(path, &text)) {
     return Result<Recipe>::fail(ErrorCode::kIoError, "cannot open recipe: " + path);
   }
-  std::string text;
-  char buffer[4096];
-  std::size_t read = 0;
-  while ((read = std::fread(buffer, 1, sizeof(buffer), file)) > 0) {
-    text.append(buffer, read);
-  }
-  std::fclose(file);
   return Recipe::from_json(text);
 }
 
@@ -268,18 +283,11 @@ int command_apply(const std::string& input, const std::string& output,
     return 1;
   }
 
-  std::FILE* file = std::fopen(recipe_path.c_str(), "rb");
-  if (file == nullptr) {
+  std::string text;
+  if (!read_text(recipe_path, &text)) {
     std::fprintf(stderr, "error: cannot open recipe: %s\n", recipe_path.c_str());
     return 1;
   }
-  std::string text;
-  char buffer[4096];
-  std::size_t read = 0;
-  while ((read = std::fread(buffer, 1, sizeof(buffer), file)) > 0) {
-    text.append(buffer, read);
-  }
-  std::fclose(file);
 
   auto recipe = Recipe::from_json(text);
   if (!recipe) {
@@ -490,12 +498,7 @@ int command_demo(const std::string& output_dir, int width, int height, unsigned 
   gamma.params.set("gamma", 1.05);
   recipe.steps.push_back(gamma);
 
-  std::FILE* recipe_file = std::fopen(recipe_path.c_str(), "wb");
-  if (recipe_file != nullptr) {
-    const std::string text = recipe.to_json(2);
-    std::fwrite(text.data(), 1, text.size(), recipe_file);
-    std::fclose(recipe_file);
-  }
+  write_text(recipe_path, recipe.to_json(2));
 
   const Registry& registry = Registry::instance();
   auto result = execute(recipe, before.view(), registry);
@@ -525,18 +528,14 @@ int command_demo(const std::string& output_dir, int width, int height, unsigned 
   }
   std::printf("cache key : %s\n", to_hex(result.value().cache_key).c_str());
 
-  std::FILE* report = std::fopen(report_path.c_str(), "wb");
-  if (report != nullptr) {
-    const std::string text = "figtools demo report\n" + std::string("size: ") +
-                             std::to_string(w) + "x" + std::to_string(h) + "\n" +
-                             "steps: " + std::to_string(result.value().trace.size()) + "\n" +
-                             "time_ms: " + std::to_string(result.value().total_milliseconds) + "\n" +
-                             "cache_key: " + to_hex(result.value().cache_key) + "\n" +
-                             (metrics ? "psnr: " + std::to_string(metrics.value().psnr) + "\n" : "") +
-                             (metrics ? "ssim: " + std::to_string(metrics.value().ssim) + "\n" : "");
-    std::fwrite(text.data(), 1, text.size(), report);
-    std::fclose(report);
-  }
+  const std::string report_text =
+      "figtools demo report\n" + std::string("size: ") + std::to_string(w) + "x" +
+      std::to_string(h) + "\n" + "steps: " + std::to_string(result.value().trace.size()) +
+      "\n" + "time_ms: " + std::to_string(result.value().total_milliseconds) + "\n" +
+      "cache_key: " + to_hex(result.value().cache_key) + "\n" +
+      (metrics ? "psnr: " + std::to_string(metrics.value().psnr) + "\n" : "") +
+      (metrics ? "ssim: " + std::to_string(metrics.value().ssim) + "\n" : "");
+  write_text(report_path, report_text);
   return 0;
 }
 
