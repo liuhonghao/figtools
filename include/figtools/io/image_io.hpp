@@ -20,6 +20,9 @@ enum class ImageFormat {
   kPng,
   kBmp,
   kPpm,
+  kJpeg,
+  kWebp,
+  kTga,
 };
 
 const char* to_string(ImageFormat format) noexcept;

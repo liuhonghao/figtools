@@ -23,7 +23,8 @@
 | **v0.9** | 批量推理：单进程跑整目录、CSV/JSONL 结果、进度与取消 | ✅ 可用 |
 | **v1.0** | 目标检测：从标注框裁片训练、滑窗 + NMS、检测框画回画布 | ✅ 可用 |
 | **v1.1** | 工作台重做（Ribbon + 项目树 + 属性坞 + 输出坞）；YOLO 训练/推理接入 | ✅ 可用 |
-| v1.2 | ONNX Runtime C++ 推理、实例分割、长驻 worker | 规划中 |
+| **v1.2** | JPEG/WebP/TGA 解码、大图常驻内存恒定、质量指标、pHash 近重复、YOLO 真训练、Windows 发布包 | ✅ 可用 |
+| v1.3 | ONNX Runtime C++ 推理、实例分割、长驻 worker | 规划中 |
 | v1.0 | 插件 ABI、批量任务中心、团队模式 | 规划中 |
 
 ![workbench](docs/images/workbench.png)
@@ -227,7 +228,8 @@ output    : photo_fixed.png (1200 x 800)
 ```
 include/figtools/     公开头文件（core / io / ops / pipeline）
 src/core/             图像、几何、色彩、哈希、指标、示例场景
-src/io/               PNG(zlib) / BMP / PPM 编解码
+src/io/               PNG(zlib) / BMP / PPM / JPEG / WebP / TGA 编解码
+src/core/pyramid.*    多分辨率图像金字塔
 src/ops/              算子实现与注册表
 src/json/             零依赖 JSON 读写
 src/annotate/         标注模型、COCO/YOLO 导出

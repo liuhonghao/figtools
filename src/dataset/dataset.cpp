@@ -32,7 +32,8 @@ bool is_supported_image(const fs::path& path) {
   std::transform(extension.begin(), extension.end(), extension.begin(),
                  [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   return extension == ".png" || extension == ".bmp" || extension == ".ppm" ||
-         extension == ".pgm";
+         extension == ".pgm" || extension == ".jpg" || extension == ".jpeg" ||
+         extension == ".jpe" || extension == ".webp" || extension == ".tga";
 }
 
 std::uint64_t hash_file(const fs::path& path, std::uint64_t* total_bytes) {
@@ -146,6 +147,11 @@ Result<Dataset> Dataset::scan(const std::string& directory, bool recursive) {
     item.width = info.value().width;
     item.height = info.value().height;
     item.content_hash = hash_file(path, nullptr);
+    // Perceptual hash needs decoded pixels. A corrupt image simply gets zero,
+    // which means "unknown" and is skipped by the near-duplicate check.
+    if (auto decoded = load_image(path.string()); decoded) {
+      item.perceptual_hash = figtools::perceptual_hash(decoded.value().view());
+    }
 
     fs::path sidecar = path;
     sidecar += ".annotations.json";
@@ -331,6 +337,28 @@ std::vector<DatasetWarning> Dataset::warnings() const {
     out.push_back({DatasetWarning::Kind::kDuplicate,
                    "检测到 " + std::to_string(summary.duplicate_groups) +
                        " 组内容完全相同的图片，可能造成训练/验证泄漏"});
+  }
+  // Near duplicates across splits are the most common silent leakage: a
+  // resized or recompressed copy of a train image ending up in val/test.
+  // Compare pHash only across different splits to keep the cost bounded.
+  std::size_t near_duplicate_pairs = 0;
+  for (std::size_t i = 0; i < items_.size(); ++i) {
+    if (items_[i].perceptual_hash == 0) {
+      continue;
+    }
+    for (std::size_t j = i + 1; j < items_.size(); ++j) {
+      if (items_[j].perceptual_hash == 0 || items_[i].split == items_[j].split) {
+        continue;
+      }
+      if (hamming_distance(items_[i].perceptual_hash, items_[j].perceptual_hash) <= 5) {
+        ++near_duplicate_pairs;
+      }
+    }
+  }
+  if (near_duplicate_pairs > 0) {
+    out.push_back({DatasetWarning::Kind::kNearDuplicate,
+                   "检测到 " + std::to_string(near_duplicate_pairs) +
+                       " 对跨集合近重复图片（缩放/压缩后同图），会造成指标虚高"});
   }
   if (summary.orphan_annotations > 0) {
     out.push_back({DatasetWarning::Kind::kUnreadable,

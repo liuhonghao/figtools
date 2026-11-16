@@ -32,6 +32,11 @@ namespace figtools::io_detail {
 [[nodiscard]] Result<std::vector<std::uint8_t>> encode_ppm(const ImageView& image);
 [[nodiscard]] Result<ImageInfo> probe_ppm(std::span<const std::uint8_t> bytes);
 
+// --- stb-backed: JPEG / WebP / TGA -----------------------------------------
+[[nodiscard]] Result<Image> decode_stb(std::span<const std::uint8_t> bytes, ImageFormat format);
+[[nodiscard]] Result<std::vector<std::uint8_t>> encode_jpeg(const ImageView& image, int quality);
+[[nodiscard]] Result<ImageInfo> probe_stb(std::span<const std::uint8_t> bytes, ImageFormat format);
+
 }  // namespace figtools::io_detail
 
 #endif  // FIGTOOLS_SRC_IO_CODECS_HPP_

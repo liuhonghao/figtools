@@ -29,7 +29,8 @@ std::string lower_extension(const fs::path& path) {
 bool is_supported(const fs::path& path) {
   const std::string extension = lower_extension(path);
   return extension == ".png" || extension == ".bmp" || extension == ".ppm" ||
-         extension == ".pgm";
+         extension == ".pgm" || extension == ".jpg" || extension == ".jpeg" ||
+         extension == ".jpe" || extension == ".webp" || extension == ".tga";
 }
 
 }  // namespace

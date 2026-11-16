@@ -119,7 +119,9 @@ class MainWindow : public QMainWindow {
   [[nodiscard]] QWidget* buildParamEditor(const ParamSpec& spec, const ParamValue& value,
                                           std::size_t step_index, const QString& key);
 
-  Image source_;
+  Image source_;  // preview-resolution image held in memory (bounded size)
+  QSize full_image_size_;             // original dimensions on disk
+  bool has_full_source_ = false;      // true when a full-res file backs source_
   QString source_path_;
   Recipe recipe_;
   RecipeHistory history_{Recipe{}};
@@ -136,6 +138,7 @@ class MainWindow : public QMainWindow {
   KeyValueList* info_list_ = nullptr;
   KeyValueList* stats_list_ = nullptr;
   KeyValueList* model_list_ = nullptr;
+  KeyValueList* quality_list_ = nullptr;
   QLabel* status_file_ = nullptr;
   QLabel* status_message_ = nullptr;
   QLabel* status_size_ = nullptr;

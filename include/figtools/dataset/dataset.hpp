@@ -36,6 +36,7 @@ struct DatasetItem {
   int width = 0;
   int height = 0;
   std::uint64_t content_hash = 0;
+  std::uint64_t perceptual_hash = 0;  // for cross-split near-duplicate detection
   std::size_t class_instances = 0;      // total shapes in the sidecar
   std::map<int, int> per_class_counts;  // class id -> instances
   Split split = Split::kTrain;
@@ -52,7 +53,7 @@ struct DatasetStats {
 
 // One sanity check the export refuses to ignore.
 struct DatasetWarning {
-  enum class Kind { kNoAnnotations, kDuplicate, kClassMissingInSplit, kTinySplit, kUnreadable };
+  enum class Kind { kNoAnnotations, kDuplicate, kNearDuplicate, kClassMissingInSplit, kTinySplit, kUnreadable };
   Kind kind = Kind::kNoAnnotations;
   std::string message;
 };

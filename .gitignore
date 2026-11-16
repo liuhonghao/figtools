@@ -46,3 +46,7 @@ __pycache__/
 
 # Local toolchain (Qt/MinGW copy used for desktop builds)
 .toolchain/
+
+/dist/
+
+/.deps/

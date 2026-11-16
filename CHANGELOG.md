@@ -3,6 +3,27 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.0] - 2026-11-16
+
+### Added
+
+- **JPEG / WebP / TGA 支持**：用项目内 `third_party/stb` 实现解码（JPEG 编码也可），
+  GUI 打开对话框、批量处理、格式探测与属性面板全部覆盖；JPEG 往返测试加入套件。
+- **大图内存恒定**：`source_` 只保留 ≤1400 px 预览，原图尺寸记录在案；
+  导出/全分辨率推理时从磁盘重新解码。新增 `ImagePyramid` 与 `pHash` 核心能力。
+  实测 6000×4000 JPEG：右栏显示原始 6000×4000、常驻内存仅 138 MB。
+- **画布质量对比**：右栏常驻 PSNR / SSIM / MAE / 变化像素占比。
+- **pHash 近重复检测**：数据集页告警跨集近重复（汉明距离 ≤5），补上缩放/压缩后泄漏。
+- **YOLO 真训练跑通**：从 GitHub 克隆 ultralytics 并本地安装（pip 镜像失效绕过）；
+  修正回调读 loss/epoch 越界与 polars 依赖；400 张标注图、25 轮从零训练达
+  mAP50 0.9945 / mAP50-95 0.9144，未见图上检出目标置信度 0.93 / 0.88。
+- **Windows 发布包**：`scripts/package_windows.ps1` 生成 11.9 MB zip，
+  只含 exe、Qt/MinGW 运行库、qwindows 插件与 Python worker。
+
+### Fixed
+
+- 训练回调的 `loss_items` 多种类型兼容；多出的 validation 回调不再产生 epoch+1。
+
 ## [1.1.0] - 2026-11-16
 
 ### Added

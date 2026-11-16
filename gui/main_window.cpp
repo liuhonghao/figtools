@@ -58,6 +58,7 @@
 
 #include "figtools/core/color.hpp"
 #include "figtools/core/geometry.hpp"
+#include "figtools/core/metrics.hpp"
 #include "figtools/core/sample_scene.hpp"
 #include "figtools/io/image_io.hpp"
 #include "figtools/ops/registry.hpp"
@@ -71,7 +72,7 @@
 #include "widgets.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.1.0"
+#define FIGTOOLS_VERSION "1.2.0"
 #endif
 
 namespace figtools::gui {
@@ -205,7 +206,7 @@ void MainWindow::buildActions() {
   connect(open_action_, &QAction::triggered, this, [this]() {
     const QString path = QFileDialog::getOpenFileName(
         this, tr("打开图像"), last_open_dir_,
-        tr("图像 (*.png *.bmp *.ppm *.pgm);;所有文件 (*.*)"));
+        tr("图像 (*.png *.bmp *.ppm *.pgm *.jpg *.jpeg *.webp *.tga);;所有文件 (*.*)"));
     if (!path.isEmpty()) {
       loadPath(path);
     }
@@ -1170,6 +1171,13 @@ QWidget* MainWindow::buildFactsPanel(QWidget* parent) {
   layout->addWidget(stats_list_);
 
   layout->addSpacing(10);
+  layout->addWidget(theme::section_label(tr("质量对比"), panel));
+  layout->addWidget(theme::hairline(panel));
+  quality_list_ = new KeyValueList(panel);
+  quality_list_->set_rows({{tr("PSNR"), tr("—")}, {tr("SSIM"), tr("—")}});
+  layout->addWidget(quality_list_);
+
+  layout->addSpacing(10);
   layout->addWidget(theme::section_label(tr("模型"), panel));
   layout->addWidget(theme::hairline(panel));
   layout->addSpacing(2);
@@ -1527,7 +1535,19 @@ void MainWindow::schedulePreview() {
 void MainWindow::applyRecipeToSource(Image* output, double* milliseconds) {
   QElapsedTimer timer;
   timer.start();
-  auto result = execute(recipe_, source_.view(), Registry::instance());
+  // The in-memory source is a bounded preview. For full-resolution output,
+  // decode the original again; stb's decoder is fast enough and this keeps
+  // steady-state memory small even for very large images.
+  const Image* input = &source_;
+  Image full;
+  if (has_full_source_ && !source_path_.isEmpty()) {
+    auto decoded = load_image(source_path_.toStdString());
+    if (decoded) {
+      full = std::move(decoded.value());
+      input = &full;
+    }
+  }
+  auto result = execute(recipe_, input->view(), Registry::instance());
   if (milliseconds != nullptr) {
     *milliseconds = static_cast<double>(timer.nsecsElapsed()) / 1.0e6;
   }
@@ -1578,9 +1598,29 @@ void MainWindow::runPreview() {
   }
   histogram_->setImage(after);
 
+  if (quality_list_ != nullptr) {
+    auto metrics = compare_images(preview_source.view(), result.value().image.view());
+    if (metrics) {
+      const ImageMetrics& m = metrics.value();
+      auto ratio = QStringLiteral("%1%").arg(m.changed_ratio * 100.0, 0, 'f', 1);
+      auto psnr = m.identical ? tr("相同")
+                              : QString::number(m.psnr, 'f', 2) + QStringLiteral(" dB");
+      quality_list_->set_rows({{tr("PSNR"), psnr},
+                               {tr("SSIM"), QString::number(m.ssim, 'f', 4)},
+                               {tr("MAE"), QString::number(m.mae, 'f', 2)},
+                               {tr("变化像素"), ratio}});
+    } else {
+      quality_list_->set_rows({{tr("PSNR"), tr("尺寸不同")},
+                               {tr("SSIM"), tr("—")}});
+    }
+  }
+
+  const QSize shown_size = has_full_source_ && !full_image_size_.isEmpty()
+                               ? full_image_size_
+                               : QSize(source_.width(), source_.height());
   status_size_->setText(tr("%1 × %2  ·  预览 %3 × %4")
-                            .arg(source_.width())
-                            .arg(source_.height())
+                            .arg(shown_size.width())
+                            .arg(shown_size.height())
                             .arg(result.value().image.width())
                             .arg(result.value().image.height()));
   status_time_->setText(tr("%1 ms  ·  %2 步")
@@ -1719,6 +1759,9 @@ void MainWindow::updateInfoPanel() {
   }
 
   const QString name = source_path_.isEmpty() ? tr("示例图") : QFileInfo(source_path_).fileName();
+  const QSize reported = has_full_source_ && !full_image_size_.isEmpty()
+                             ? full_image_size_
+                             : QSize(source_.width(), source_.height());
   double mean_r = 0.0;
   double mean_g = 0.0;
   double mean_b = 0.0;
@@ -1749,7 +1792,7 @@ void MainWindow::updateInfoPanel() {
 
   info_list_->set_rows({
       {tr("文件"), name},
-      {tr("尺寸"), QStringLiteral("%1 × %2").arg(source_.width()).arg(source_.height())},
+      {tr("尺寸"), QStringLiteral("%1 × %2").arg(reported.width()).arg(reported.height())},
       {tr("色彩"), tr("RGBA · 8 bit")},
       {tr("像素"), QStringLiteral("%1 万").arg(pixels / 10000.0, 0, 'f', 1)},
       {tr("内存"), format_bytes(source_.byte_size())},
@@ -2077,7 +2120,9 @@ bool MainWindow::loadPath(const QString& path) {
     QMessageBox::warning(this, tr("无法打开图像"), error_text(image.error()));
     return false;
   }
-  source_ = std::move(image.value());
+  full_image_size_ = QSize(image.value().width(), image.value().height());
+  has_full_source_ = true;
+  source_ = makePreviewSource(image.value());
   source_path_ = path;
   last_open_dir_ = QFileInfo(path).absolutePath();
   annotations_.clear();
@@ -2101,6 +2146,8 @@ bool MainWindow::loadPath(const QString& path) {
 
 void MainWindow::loadSample() {
   source_ = make_sample_scene(1200, 800, 2026U);
+  full_image_size_ = QSize(source_.width(), source_.height());
+  has_full_source_ = false;
   source_path_.clear();
   annotations_.clear();
   annotations_.set_image_size(0, 0);

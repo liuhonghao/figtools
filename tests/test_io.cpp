@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 
@@ -30,6 +31,7 @@ void check_rgb_equal(const Image& lhs, const Image& rhs, bool check_alpha) {
     }
   }
 }
+
 
 }  // namespace
 
@@ -128,3 +130,40 @@ TEST(save_rejects_unknown_extension) {
   CHECK(!status.has_value());
   CHECK_EQ(static_cast<int>(status.error().code), static_cast<int>(ErrorCode::kUnsupported));
 }
+
+TEST(jpeg_roundtrip_preserves_dimensions_and_is_lossy_but_readable) {
+  const Image source = ft_test::make_test_image(64, 48);
+  const std::string path = ft_test::temp_path("ft_jpeg_rt.jpg").string();
+  auto saved = figtools::save_image(source, path);
+  CHECK(saved.has_value());
+  if (!saved) {
+    return;
+  }
+  auto info = figtools::probe_image(path);
+  CHECK(info.has_value());
+  if (info) {
+    CHECK_EQ(static_cast<int>(info.value().format), static_cast<int>(figtools::ImageFormat::kJpeg));
+    CHECK_EQ(info.value().width, 64);
+    CHECK_EQ(info.value().height, 48);
+    CHECK_EQ(info.value().bit_depth, 8);
+    CHECK_EQ(info.value().color_model, std::string("RGB"));
+  }
+  auto loaded = figtools::load_image(path);
+  CHECK(loaded.has_value());
+  if (loaded) {
+    CHECK_EQ(loaded.value().width(), 64);
+    CHECK_EQ(loaded.value().height(), 48);
+    double total = 0.0;
+    for (int y = 0; y < 48; ++y) {
+      for (int x = 0; x < 64; ++x) {
+        const auto a = source.at(x, y);
+        const auto b = loaded.value().at(x, y);
+        total += std::abs(static_cast<int>(a.r) - static_cast<int>(b.r));
+      }
+    }
+    const double mean_error = total / (64.0 * 48.0);
+    CHECK(mean_error < 18.0);  // quality 90 should stay visually close
+  }
+  std::remove(path.c_str());
+}
+

@@ -26,6 +26,12 @@ constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
 
 [[nodiscard]] std::uint64_t hash_combine(std::uint64_t seed, std::uint64_t value);
 
+// Perceptual hash: 64 bits describing coarse luminance structure. Two images
+// that differ only by resize / JPEG quality / small colour shifts have a small
+// Hamming distance, which is how near-duplicate leakage is detected.
+[[nodiscard]] std::uint64_t perceptual_hash(const ImageView& image);
+[[nodiscard]] int hamming_distance(std::uint64_t a, std::uint64_t b) noexcept;
+
 [[nodiscard]] std::string to_hex(std::uint64_t value);
 
 }  // namespace figtools

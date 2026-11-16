@@ -111,11 +111,28 @@ def main() -> int:
     def on_fit_epoch_end(trainer) -> None:  # noqa: ANN001 - ultralytics callback
         metrics = getattr(trainer, "metrics", {}) or {}
         epoch = int(getattr(trainer, "epoch", 0)) + 1
-        # Ultralytics keys vary slightly by version; read both common forms.
+        if epoch > epochs:  # validation callback may fire once after the loop
+            return
+        # Ultralytics keeps validation metrics in trainer.metrics (keys vary by
+        # version) but training losses in trainer.loss_items, not in metrics.
         map50 = metrics.get("metrics/mAP50(B)", metrics.get("mAP50", 0.0))
         map5095 = metrics.get("metrics/mAP50-95(B)", metrics.get("mAP50-95", 0.0))
-        loss_box = metrics.get("train/box_loss", 0.0)
-        loss_cls = metrics.get("train/cls_loss", 0.0)
+        # trainer.loss_items is a numpy array in most versions, but some
+        # builds expose it as a dict; read defensively so a callback can never
+        # abort a 25-epoch training run.
+        loss_box = 0.0
+        loss_cls = 0.0
+        loss_items = getattr(trainer, "loss_items", None)
+        if loss_items is not None:
+            try:
+                loss_box = float(loss_items[0])
+                loss_cls = float(loss_items[1])
+            except (KeyError, IndexError, TypeError, ValueError):
+                try:
+                    loss_box = float(loss_items.get("box", 0.0))
+                    loss_cls = float(loss_items.get("cls", 0.0))
+                except (AttributeError, TypeError, ValueError):
+                    pass
         record = {
             "epoch": epoch,
             "total_epochs": epochs,

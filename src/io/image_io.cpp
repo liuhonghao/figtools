@@ -57,6 +57,14 @@ ImageFormat sniff(std::span<const std::uint8_t> bytes) {
   if (bytes.size() >= 2 && bytes[0] == 'P' && (bytes[1] == '5' || bytes[1] == '6')) {
     return ImageFormat::kPpm;
   }
+  if (bytes.size() >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) {
+    return ImageFormat::kJpeg;
+  }
+  if (bytes.size() >= 12 && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' &&
+      bytes[3] == 'F' && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' &&
+      bytes[11] == 'P') {
+    return ImageFormat::kWebp;
+  }
   return ImageFormat::kUnknown;
 }
 
@@ -70,6 +78,12 @@ const char* to_string(ImageFormat format) noexcept {
       return "BMP";
     case ImageFormat::kPpm:
       return "PPM";
+    case ImageFormat::kJpeg:
+      return "JPEG";
+    case ImageFormat::kWebp:
+      return "WebP";
+    case ImageFormat::kTga:
+      return "TGA";
     case ImageFormat::kUnknown:
     default:
       return "unknown";
@@ -87,6 +101,15 @@ ImageFormat format_from_path(const std::string& path) {
   if (extension == ".ppm" || extension == ".pgm" || extension == ".pnm") {
     return ImageFormat::kPpm;
   }
+  if (extension == ".jpg" || extension == ".jpeg" || extension == ".jpe") {
+    return ImageFormat::kJpeg;
+  }
+  if (extension == ".webp") {
+    return ImageFormat::kWebp;
+  }
+  if (extension == ".tga") {
+    return ImageFormat::kTga;
+  }
   return ImageFormat::kUnknown;
 }
 
@@ -96,7 +119,11 @@ Result<Image> load_image(const std::string& path) {
     return Result<Image>::fail(bytes.error().code, bytes.error().message);
   }
 
-  const auto format = sniff(bytes.value());
+  auto format = sniff(bytes.value());
+  if (format == ImageFormat::kUnknown) {
+    // TGA has no reliable magic; fall back to the extension.
+    format = format_from_path(path);
+  }
   switch (format) {
     case ImageFormat::kPng:
       return io_detail::decode_png(bytes.value());
@@ -104,22 +131,33 @@ Result<Image> load_image(const std::string& path) {
       return io_detail::decode_bmp(bytes.value());
     case ImageFormat::kPpm:
       return io_detail::decode_ppm(bytes.value());
+    case ImageFormat::kJpeg:
+    case ImageFormat::kWebp:
+    case ImageFormat::kTga:
+      return io_detail::decode_stb(bytes.value(), format);
     case ImageFormat::kUnknown:
     default:
       return Result<Image>::fail(ErrorCode::kUnsupported,
                                  "unrecognised image format: " + path +
-                                     " (supported: PNG, BMP, PPM)");
+                                     " (supported: PNG, BMP, PPM, JPEG, WebP, TGA)");
   }
 }
 
 Result<ImageInfo> probe_image(const std::string& path) {
-  auto bytes = read_file(path, kProbeBytes);
+  const ImageFormat sniffed = format_from_path(path);
+  const bool needs_full_file = sniffed == ImageFormat::kJpeg || sniffed == ImageFormat::kWebp ||
+                               sniffed == ImageFormat::kTga;
+  auto bytes = read_file(path, needs_full_file ? 0 : kProbeBytes);
   if (!bytes) {
     return Result<ImageInfo>::fail(bytes.error().code, bytes.error().message);
   }
 
   Result<ImageInfo> info = Result<ImageInfo>::fail(ErrorCode::kUnsupported, "unknown format");
-  switch (sniff(bytes.value())) {
+  auto detected = sniff(bytes.value());
+  if (detected == ImageFormat::kUnknown) {
+    detected = sniffed;
+  }
+  switch (detected) {
     case ImageFormat::kPng:
       info = io_detail::probe_png(bytes.value());
       break;
@@ -128,6 +166,11 @@ Result<ImageInfo> probe_image(const std::string& path) {
       break;
     case ImageFormat::kPpm:
       info = io_detail::probe_ppm(bytes.value());
+      break;
+    case ImageFormat::kJpeg:
+    case ImageFormat::kWebp:
+    case ImageFormat::kTga:
+      info = io_detail::probe_stb(bytes.value(), detected);
       break;
     case ImageFormat::kUnknown:
     default:
@@ -163,11 +206,18 @@ Status save_image(const Image& image, const std::string& path) {
     case ImageFormat::kPpm:
       encoded = io_detail::encode_ppm(image.view());
       break;
+    case ImageFormat::kJpeg:
+      encoded = io_detail::encode_jpeg(image.view(), 90);
+      break;
+    case ImageFormat::kWebp:
+    case ImageFormat::kTga:
+      return Status::fail(ErrorCode::kUnsupported,
+                          "writing this format is not supported: " + path);
     case ImageFormat::kUnknown:
     default:
       return Status::fail(ErrorCode::kUnsupported,
                           "cannot infer output format from extension: " + path +
-                              " (use .png, .bmp or .ppm)");
+                              " (use .png, .bmp, .ppm or .jpg)");
   }
   if (!encoded) {
     return Status::fail(encoded.error().code, encoded.error().message);

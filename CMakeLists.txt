@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(figtools
-  VERSION 1.1.0
+  VERSION 1.2.0
   DESCRIPTION "Image processing workbench: deterministic pipelines, operator registry, CLI"
   HOMEPAGE_URL "https://github.com/liuhonghao/figtools"
   LANGUAGES CXX
@@ -48,13 +48,18 @@ target_link_libraries(ft_core PRIVATE figtools::warnings)
 add_library(figtools::core ALIAS ft_core)
 
 # ---------------------------------------------------------------------------
-# ft_io -- PNG / BMP / PPM codecs
+# ft_io -- PNG / BMP / PPM / JPEG / WebP / TGA codecs
 # ---------------------------------------------------------------------------
 add_library(ft_io STATIC
   src/io/png.cpp
   src/io/bmp.cpp
   src/io/ppm.cpp
+  src/io/stb_codec.cpp
   src/io/image_io.cpp
+)
+target_include_directories(ft_io PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>
+  $<INSTALL_INTERFACE:include>
 )
 target_link_libraries(ft_io PUBLIC ft_core PRIVATE ZLIB::ZLIB figtools::warnings)
 add_library(figtools::io ALIAS ft_io)
