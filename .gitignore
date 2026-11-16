@@ -31,6 +31,9 @@ Thumbs.db
 *.log
 /tmp/
 /demo_out/
+/demo_out*/
+/figtools_output*
+
 
 # Python
 __pycache__/
