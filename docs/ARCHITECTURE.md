@@ -34,7 +34,7 @@
 | `ft_json` | 零依赖 JSON 读写 | 无 |
 | `ft_annotate` | 标注模型、COCO/YOLO 导出 | `ft_core` `ft_json` |
 | `ft_dataset` | 扫描、划分、检查、快照导出 | `ft_core` `ft_io` `ft_annotate` `ft_json` |
-| `ft_pipeline` | Recipe、执行与缓存键 | `ft_core` `ft_io` `ft_ops` `ft_json` |
+| `ft_pipeline` | Recipe、执行、缓存键、撤销历史 | `ft_core` `ft_io` `ft_ops` `ft_json` |
 | `figtools` | CLI | `ft_pipeline` |
 
 ## 2. 错误模型
@@ -139,7 +139,7 @@ using OperatorFn = Result<Image>(const ImageView&, const Params&);
 
 ## 7. 测试策略
 
-`tests/` 零第三方依赖，69 项用例，跑完 < 1 秒：
+`tests/` 零第三方依赖，78 项用例，跑完 < 1 秒：
 
 | 文件 | 覆盖 |
 |---|---|
@@ -149,6 +149,7 @@ using OperatorFn = Result<Image>(const ImageView&, const Params&);
 | `test_pipeline.cpp` | 配方往返稳定、非法配方拒绝、执行确定性、禁用步骤跳过 |
 | `test_annotate.cpp` | 面积/外接框/命中判定、COCO 与 YOLO 归一化、JSON 往返字节一致 |
 | `test_batch.cpp` | 目录扫描与排序、递归、跳过/覆盖、取消、进度单调、批量输出与单张逐字节一致 |
+| `test_history.cpp` | 撤销/重做、分支截断、同 token 合并、空提交忽略、容量淘汰、reset |
 
 原则：**测不变量，不测实现**。例如不测「median 的第 3 行第 7 列是 128」，而测「孤立噪点被消除」「输出尺寸不变」。
 

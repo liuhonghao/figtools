@@ -16,6 +16,7 @@
 #include "figtools/core/image.hpp"
 #include "figtools/dataset/dataset.hpp"
 #include "figtools/pipeline/executor.hpp"
+#include "figtools/pipeline/history.hpp"
 #include "figtools/pipeline/recipe.hpp"
 
 class QAction;
@@ -27,6 +28,7 @@ class QListWidget;
 class QProgressBar;
 class QSpinBox;
 class QTabWidget;
+class QToolButton;
 class QVBoxLayout;
 class QWidget;
 
@@ -92,6 +94,10 @@ class MainWindow : public QMainWindow {
   void setBusy(bool busy, const QString& message = QString());
   void notify(const QString& text, int timeout_ms = 3000);
   void setCompareMode(int mode);
+  void commitRecipe(const QString& label, const QString& coalesce_token = QString());
+  void undoRecipe();
+  void redoRecipe();
+  void updateHistoryActions();
 
   [[nodiscard]] QWidget* buildParamEditor(const ParamSpec& spec, const ParamValue& value,
                                           std::size_t step_index, const QString& key);
@@ -99,6 +105,7 @@ class MainWindow : public QMainWindow {
   Image source_;
   QString source_path_;
   Recipe recipe_;
+  RecipeHistory history_{Recipe{}};
   Image result_;
   double last_milliseconds_ = 0.0;
   bool building_chain_ = false;
@@ -142,6 +149,10 @@ class MainWindow : public QMainWindow {
   QAction* export_action_ = nullptr;
   QAction* fit_action_ = nullptr;
   QAction* actual_action_ = nullptr;
+  QAction* undo_action_ = nullptr;
+  QAction* redo_action_ = nullptr;
+  QToolButton* undo_button_ = nullptr;
+  QToolButton* redo_button_ = nullptr;
   QString last_open_dir_;
 };
 

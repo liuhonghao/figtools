@@ -68,7 +68,8 @@ void apply(QApplication& app);
 // One-pixel rule.
 [[nodiscard]] QWidget* hairline(QWidget* parent);
 
-enum class Glyph { kOpen, kExport, kSample, kFit, kActual, kSplit, kSide, kResult, kMore, kPlus };
+enum class Glyph { kOpen, kExport, kSample, kFit, kActual, kSplit, kSide, kResult, kMore, kPlus,
+                    kUndo, kRedo };
 
 // Icons are drawn rather than borrowed from the platform theme, so the
 // toolbar looks the same on Windows, macOS and Linux.

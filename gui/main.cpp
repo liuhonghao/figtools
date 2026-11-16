@@ -1,15 +1,19 @@
 // Copyright 2026 figtools authors
 // SPDX-License-Identifier: MIT
 
+#include <QAction>
 #include <QApplication>
 #include <QDir>
+#include <QMenu>
+#include <QPushButton>
 #include <QTimer>
+#include <QToolButton>
 
 #include "main_window.hpp"
 #include "theme.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "0.6.0"
+#define FIGTOOLS_VERSION "0.7.0"
 #endif
 
 int main(int argc, char** argv) {
@@ -55,6 +59,38 @@ int main(int argc, char** argv) {
     }
     window.openBatchDialog(directory);
     return 0;
+  }
+
+  const int edit_index = arguments.indexOf(QStringLiteral("--demo-edit"));
+  if (edit_index >= 0) {
+    const bool undo = arguments.contains(QStringLiteral("--undo"));
+    const bool redo = arguments.contains(QStringLiteral("--redo"));
+    QTimer::singleShot(500, &window, [&window]() {
+      // The "add operator" control is the only button that owns a menu.
+      for (QPushButton* button : window.findChildren<QPushButton*>()) {
+        if (button->menu() == nullptr) {
+          continue;
+        }
+        for (QAction* action : button->menu()->actions()) {
+          if (!action->isSeparator() && action->isEnabled()) {
+            action->trigger();
+            break;
+          }
+        }
+        break;
+      }
+    });
+    if (undo || redo) {
+      QTimer::singleShot(900, &window, [&window, redo]() {
+        for (QAction* action : window.findChildren<QAction*>()) {
+          const QString prefix = redo ? QStringLiteral("重做") : QStringLiteral("撤销");
+          if (action->text().startsWith(prefix) && action->isEnabled()) {
+            action->trigger();
+            break;
+          }
+        }
+      });
+    }
   }
 
   const int index = arguments.indexOf(QStringLiteral("--screenshot"));

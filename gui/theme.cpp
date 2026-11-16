@@ -359,6 +359,22 @@ QIcon icon(Glyph glyph, const QColor& tint, int size) {
         painter.drawEllipse(QPointF(3.9 + static_cast<double>(i) * 4.1, 8.0), 1.55, 1.55);
       }
       break;
+    case Glyph::kUndo: {
+      QPainterPath path;
+      path.moveTo(13.2, 11.8);
+      path.cubicTo(13.2, 6.6, 10.4, 4.4, 6.4, 4.4);
+      painter.drawPath(path);
+      painter.drawPolyline(QPolygonF{QPointF(8.8, 2.2), QPointF(6.2, 4.4), QPointF(8.8, 6.6)});
+      break;
+    }
+    case Glyph::kRedo: {
+      QPainterPath path;
+      path.moveTo(2.8, 11.8);
+      path.cubicTo(2.8, 6.6, 5.6, 4.4, 9.6, 4.4);
+      painter.drawPath(path);
+      painter.drawPolyline(QPolygonF{QPointF(7.2, 2.2), QPointF(9.8, 4.4), QPointF(7.2, 6.6)});
+      break;
+    }
     case Glyph::kPlus:
       painter.drawLine(QPointF(8, 3.6), QPointF(8, 12.4));
       painter.drawLine(QPointF(3.6, 8), QPointF(12.4, 8));

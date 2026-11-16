@@ -58,7 +58,7 @@
 #include "widgets.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "0.5.0"
+#define FIGTOOLS_VERSION "0.7.0"
 #endif
 
 namespace figtools::gui {
@@ -173,6 +173,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   sharpen.params.set("threshold", 0.01);
   recipe_.steps.push_back(sharpen);
 
+  history_.reset(recipe_);
+  updateHistoryActions();
+
   rebuildClassList();
   rebuildChain();
   loadSample();
@@ -217,6 +220,24 @@ void MainWindow::buildActions() {
   auto* quit_action = file_menu->addAction(tr("退出"));
   quit_action->setShortcut(QKeySequence::Quit);
   connect(quit_action, &QAction::triggered, this, &QWidget::close);
+
+  auto* edit_menu = menuBar()->addMenu(tr("编辑(&E)"));
+  undo_action_ = edit_menu->addAction(tr("撤销"));
+  undo_action_->setShortcut(QKeySequence::Undo);
+  connect(undo_action_, &QAction::triggered, this, &MainWindow::undoRecipe);
+  redo_action_ = edit_menu->addAction(tr("重做"));
+  redo_action_->setShortcuts({QKeySequence::Redo, QKeySequence(QStringLiteral("Ctrl+Shift+Z"))});
+  connect(redo_action_, &QAction::triggered, this, &MainWindow::redoRecipe);
+  edit_menu->addSeparator();
+  auto* clear_action = edit_menu->addAction(tr("清空管线"));
+  connect(clear_action, &QAction::triggered, this, [this]() {
+    if (recipe_.steps.empty()) {
+      return;
+    }
+    recipe_.steps.clear();
+    commitRecipe(tr("清空管线"));
+    rebuildChain();
+  });
 
   auto* view_menu = menuBar()->addMenu(tr("视图(&V)"));
   fit_action_ = view_menu->addAction(tr("适应窗口"));
@@ -414,6 +435,22 @@ void MainWindow::buildTopBar(QVBoxLayout* outer) {
   layout->addSpacing(2);
   layout->addWidget(vertical_rule(bar));
   layout->addWidget(export_button);
+
+  undo_button_ = new QToolButton(bar);
+  undo_button_->setIcon(theme::icon(theme::Glyph::kUndo));
+  undo_button_->setToolTip(tr("撤销 (Ctrl+Z)"));
+  undo_button_->setCursor(Qt::PointingHandCursor);
+  connect(undo_button_, &QToolButton::clicked, this, &MainWindow::undoRecipe);
+
+  redo_button_ = new QToolButton(bar);
+  redo_button_->setIcon(theme::icon(theme::Glyph::kRedo));
+  redo_button_->setToolTip(tr("重做 (Ctrl+Y)"));
+  redo_button_->setCursor(Qt::PointingHandCursor);
+  connect(redo_button_, &QToolButton::clicked, this, &MainWindow::redoRecipe);
+
+  layout->addSpacing(2);
+  layout->addWidget(undo_button_);
+  layout->addWidget(redo_button_);
   layout->addStretch(1);
 
   // Compare mode: one segmented control, always visible, one click away.
@@ -491,6 +528,59 @@ void MainWindow::openBatchDialog(const QString& suggested_input) {
   }
   BatchDialog dialog(recipe_, suggested, this);
   dialog.exec();
+}
+
+// ---------------------------------------------------------------------------
+// Undo / redo
+// ---------------------------------------------------------------------------
+
+void MainWindow::commitRecipe(const QString& label, const QString& coalesce_token) {
+  history_.commit(recipe_, label.toStdString(), coalesce_token.toStdString());
+  updateHistoryActions();
+}
+
+void MainWindow::undoRecipe() {
+  if (!history_.undo()) {
+    return;
+  }
+  recipe_ = history_.current();
+  rebuildChain();
+  updateHistoryActions();
+  notify(tr("已撤销"), 1500);
+}
+
+void MainWindow::redoRecipe() {
+  if (!history_.redo()) {
+    return;
+  }
+  recipe_ = history_.current();
+  rebuildChain();
+  updateHistoryActions();
+  notify(tr("已重做"), 1500);
+}
+
+void MainWindow::updateHistoryActions() {
+  const bool can_undo = history_.can_undo();
+  const bool can_redo = history_.can_redo();
+  const QString undo_label = QString::fromStdString(history_.undo_label());
+  const QString redo_label = QString::fromStdString(history_.redo_label());
+
+  if (undo_action_ != nullptr) {
+    undo_action_->setEnabled(can_undo);
+    undo_action_->setText(can_undo ? tr("撤销 %1").arg(undo_label) : tr("撤销"));
+  }
+  if (redo_action_ != nullptr) {
+    redo_action_->setEnabled(can_redo);
+    redo_action_->setText(can_redo ? tr("重做 %1").arg(redo_label) : tr("重做"));
+  }
+  if (undo_button_ != nullptr) {
+    undo_button_->setEnabled(can_undo);
+    undo_button_->setToolTip(can_undo ? tr("撤销 %1").arg(undo_label) : tr("没有可撤销的操作"));
+  }
+  if (redo_button_ != nullptr) {
+    redo_button_->setEnabled(can_redo);
+    redo_button_->setToolTip(can_redo ? tr("重做 %1").arg(redo_label) : tr("没有可重做的操作"));
+  }
 }
 
 void MainWindow::prepareForCapture() {
@@ -827,6 +917,13 @@ QWidget* MainWindow::buildFactsPanel(QWidget* parent) {
 QWidget* MainWindow::buildParamEditor(const ParamSpec& spec, const ParamValue& value,
                                       std::size_t step_index, const QString& key) {
   const std::string key_text = key.toStdString();
+  const Operator* owner = Registry::instance().find(recipe_.steps[step_index].op);
+  const QString owner_label = owner != nullptr ? QString::fromStdString(owner->spec.label)
+                                               : QString::fromStdString(recipe_.steps[step_index].op);
+  const QString action_label =
+      tr("调整 %1 · %2").arg(owner_label, QString::fromStdString(spec.label));
+  const QString param_token =
+      QStringLiteral("param:%1:%2").arg(step_index).arg(key);
   auto* host = new QWidget(chain_container_);
   auto* layout = new QHBoxLayout(host);
   layout->setContentsMargins(0, 0, 0, 0);
@@ -847,11 +944,12 @@ QWidget* MainWindow::buildParamEditor(const ParamSpec& spec, const ParamValue& v
       }
       combo->setFont(theme::ui_font(11));
       connect(combo, &QComboBox::currentTextChanged, this,
-              [this, step_index, key_text](const QString& text) {
+              [this, step_index, key_text, action_label](const QString& text) {
                 if (building_chain_) {
                   return;
                 }
                 recipe_.steps[step_index].params.set(key_text, text.toStdString());
+                commitRecipe(action_label);
                 schedulePreview();
               });
       layout->addWidget(combo, 1);
@@ -860,11 +958,13 @@ QWidget* MainWindow::buildParamEditor(const ParamSpec& spec, const ParamValue& v
     case ParamType::kBool: {
       auto* toggle = new ToggleSwitch(host);
       toggle->setChecked(std::get_if<bool>(&value) != nullptr && std::get<bool>(value));
-      connect(toggle, &QAbstractButton::toggled, this, [this, step_index, key_text](bool on) {
+      connect(toggle, &QAbstractButton::toggled, this,
+              [this, step_index, key_text, action_label](bool on) {
         if (building_chain_) {
           return;
         }
         recipe_.steps[step_index].params.set(key_text, on);
+        commitRecipe(action_label);
         schedulePreview();
       });
       layout->addWidget(toggle, 0, Qt::AlignLeft);
@@ -884,11 +984,13 @@ QWidget* MainWindow::buildParamEditor(const ParamSpec& spec, const ParamValue& v
       if (!spec.unit.empty()) {
         spin->setSuffix(QStringLiteral(" ") + QString::fromStdString(spec.unit));
       }
-      connect(spin, &QSpinBox::valueChanged, this, [this, step_index, key_text](int number) {
+      connect(spin, &QSpinBox::valueChanged, this,
+              [this, step_index, key_text, action_label](int number) {
         if (building_chain_) {
           return;
         }
         recipe_.steps[step_index].params.set(key_text, static_cast<double>(number));
+        commitRecipe(action_label);
         schedulePreview();
       });
       layout->addWidget(spin, 0);
@@ -918,7 +1020,7 @@ QWidget* MainWindow::buildParamEditor(const ParamSpec& spec, const ParamValue& v
                                                     span * 1000.0)));
 
       connect(slider, &QSlider::valueChanged, this,
-              [this, spin, spec, span, step_index, key_text](int position) {
+              [this, spin, spec, span, step_index, key_text, action_label, param_token](int position) {
                 const double number = spec.min_value + span * static_cast<double>(position) / 1000.0;
                 const QSignalBlocker blocker(spin);
                 spin->setValue(number);
@@ -926,10 +1028,11 @@ QWidget* MainWindow::buildParamEditor(const ParamSpec& spec, const ParamValue& v
                   return;
                 }
                 recipe_.steps[step_index].params.set(key_text, number);
+                commitRecipe(action_label, param_token);
                 schedulePreview();
               });
       connect(spin, &QDoubleSpinBox::valueChanged, this,
-              [this, slider, spec, span, step_index, key_text](double number) {
+              [this, slider, spec, span, step_index, key_text, action_label, param_token](double number) {
                 const QSignalBlocker blocker(slider);
                 slider->setValue(static_cast<int>(
                     std::lround((number - spec.min_value) / span * 1000.0)));
@@ -937,6 +1040,7 @@ QWidget* MainWindow::buildParamEditor(const ParamSpec& spec, const ParamValue& v
                   return;
                 }
                 recipe_.steps[step_index].params.set(key_text, number);
+                commitRecipe(action_label, param_token);
                 schedulePreview();
               });
 
@@ -1076,6 +1180,7 @@ void MainWindow::rebuildChain() {
         return;
       }
       recipe_.steps[i].enabled = on;
+      commitRecipe(tr("%1 %2").arg(on ? tr("启用") : tr("停用"), title->text()));
       card->setProperty("state", on ? "on" : "off");
       title->setProperty("state", on ? "on" : "off");
       restyle(card);
@@ -1103,6 +1208,8 @@ void MainWindow::addOperator(const QString& id) {
   Step step;
   step.op = id.toStdString();
   recipe_.steps.push_back(step);
+  const Operator* op = Registry::instance().find(step.op);
+  commitRecipe(tr("添加 %1").arg(op != nullptr ? QString::fromStdString(op->spec.label) : id));
   rebuildChain();
 }
 
@@ -1110,7 +1217,11 @@ void MainWindow::removeStep(std::size_t index) {
   if (index >= recipe_.steps.size()) {
     return;
   }
+  const Operator* op = Registry::instance().find(recipe_.steps[index].op);
+  const QString name = op != nullptr ? QString::fromStdString(op->spec.label)
+                                     : QString::fromStdString(recipe_.steps[index].op);
   recipe_.steps.erase(recipe_.steps.begin() + static_cast<std::ptrdiff_t>(index));
+  commitRecipe(tr("删除 %1").arg(name));
   rebuildChain();
 }
 
@@ -1119,7 +1230,11 @@ void MainWindow::moveStep(std::size_t index, int delta) {
   if (target < 0 || target >= static_cast<int>(recipe_.steps.size())) {
     return;
   }
+  const Operator* op = Registry::instance().find(recipe_.steps[index].op);
+  const QString name = op != nullptr ? QString::fromStdString(op->spec.label)
+                                     : QString::fromStdString(recipe_.steps[index].op);
   std::swap(recipe_.steps[index], recipe_.steps[static_cast<std::size_t>(target)]);
+  commitRecipe(tr("%1 %2").arg(delta < 0 ? tr("上移") : tr("下移")).arg(name));
   rebuildChain();
 }
 
@@ -1300,6 +1415,7 @@ void MainWindow::loadRecipe() {
     return;
   }
   recipe_ = std::move(recipe.value());
+  commitRecipe(tr("载入配方"));
   rebuildChain();
   notify(tr("已载入配方：%1").arg(QFileInfo(path).fileName()), 4000);
 }

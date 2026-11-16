@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(figtools
-  VERSION 0.6.0
+  VERSION 0.7.0
   DESCRIPTION "Image processing workbench: deterministic pipelines, operator registry, CLI"
   HOMEPAGE_URL "https://github.com/liuhonghao/figtools"
   LANGUAGES CXX
@@ -116,6 +116,7 @@ add_library(figtools::dataset ALIAS ft_dataset)
 add_library(ft_pipeline STATIC
   src/pipeline/recipe.cpp
   src/pipeline/executor.cpp
+  src/pipeline/history.cpp
 )
 target_link_libraries(ft_pipeline PUBLIC ft_core ft_io ft_ops ft_json PRIVATE figtools::warnings)
 add_library(figtools::pipeline ALIAS ft_pipeline)
@@ -181,6 +182,7 @@ if(FIGTOOLS_BUILD_TESTS)
     tests/test_annotate.cpp
     tests/test_dataset.cpp
     tests/test_batch.cpp
+    tests/test_history.cpp
   )
   target_link_libraries(ft_tests PRIVATE ft_pipeline ft_annotate ft_dataset ft_batch figtools::warnings)
   target_include_directories(ft_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
