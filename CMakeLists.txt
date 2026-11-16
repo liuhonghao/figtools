@@ -21,6 +21,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 option(FIGTOOLS_BUILD_TESTS "Build unit tests" ON)
+option(FIGTOOLS_BUILD_GUI "Build the Qt desktop shell" OFF)
 option(FIGTOOLS_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -37,6 +38,7 @@ add_library(ft_core STATIC
   src/core/color.cpp
   src/core/hash.cpp
   src/core/metrics.cpp
+  src/core/sample_scene.cpp
 )
 target_include_directories(ft_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -86,6 +88,27 @@ add_library(figtools::pipeline ALIAS ft_pipeline)
 add_executable(figtools src/cli/main.cpp src/cli/commands.cpp)
 target_link_libraries(figtools PRIVATE ft_pipeline figtools::warnings)
 target_compile_definitions(figtools PRIVATE FIGTOOLS_VERSION="${PROJECT_VERSION}")
+
+# ---------------------------------------------------------------------------
+# Desktop shell (optional)
+# ---------------------------------------------------------------------------
+if(FIGTOOLS_BUILD_GUI)
+  find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets)
+  add_executable(figtools_gui WIN32
+    gui/main.cpp
+    gui/main_window.cpp
+    gui/main_window.hpp
+    gui/image_canvas.cpp
+    gui/image_canvas.hpp
+    gui/histogram_widget.cpp
+    gui/histogram_widget.hpp
+  )
+  target_include_directories(figtools_gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gui)
+  target_compile_definitions(figtools_gui PRIVATE FIGTOOLS_VERSION="${PROJECT_VERSION}")
+  target_link_libraries(figtools_gui PRIVATE ft_pipeline Qt6::Widgets figtools::warnings)
+  set_target_properties(figtools_gui PROPERTIES AUTOMOC ON)
+  install(TARGETS figtools_gui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
 
 # ---------------------------------------------------------------------------
 # Tests

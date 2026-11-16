@@ -13,10 +13,12 @@
 | 版本 | 内容 | 状态 |
 |---|---|---|
 | **v0.1** | 图像内核、算子库、PNG/BMP/PPM 编解码、Recipe 管线、CLI、40 项单元测试 | ✅ 可用 |
-| v0.2 | Qt 6 桌面外壳、前后对比视图、处理链节点化 | 规划中 |
+| **v0.2** | Qt 6 桌面外壳：分割/并排/结果三视图、schema 驱动的处理链、直方图、导出 | ✅ 可用 |
 | v0.3 | 标注工作台、数据集划分、COCO/YOLO 导出 | 规划中 |
 | v0.4 | Python 训练 worker、ONNX 交接、模型注册表 | 规划中 |
 | v1.0 | 插件 ABI、批量任务中心、团队模式 | 规划中 |
+
+![workbench](docs/images/workbench.png)
 
 当前仓库是**可运行的纵向切片**，不是界面原型：`figtools demo` 会真的生成图像、跑处理链、写出结果并给出 PSNR/SSIM。
 
@@ -53,6 +55,19 @@ g++ -std=c++20 -O2 -Iinclude -Isrc \
     src/core/*.cpp src/io/*.cpp src/ops/*.cpp src/pipeline/*.cpp src/cli/*.cpp \
     -lz -o figtools
 ```
+
+### 桌面外壳（Qt 6）
+
+```bash
+# 需要 Qt 6.5+ 与配套的 MinGW 工具链（ABI 必须匹配）
+cmake --preset dev -DFIGTOOLS_BUILD_GUI=ON -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.3/mingw_64
+cmake --build --preset dev --target figtools_gui
+
+# 没有 CMake 时用脚本（路径通过环境变量传入）
+QT_ROOT=/path/to/Qt/6.8.3/mingw_64 CXX=/path/to/mingw/bin/g++.exe ./scripts/build_gui.sh
+```
+
+界面能力：拖入图像即加载；左侧处理链由算子 schema 自动生成（增删、上下移、单步禁用）；中间画布支持**分割对比**（拖白色分界线）、**并排对比**、**只看结果**，滚轮缩放、拖动平移；右侧显示属性、直方图与统计；`Ctrl+S` 按原始分辨率导出。
 
 ## 用法
 
@@ -143,13 +158,15 @@ output    : photo_fixed.png (1200 x 800)
 
 ```
 include/figtools/     公开头文件（core / io / ops / pipeline）
-src/core/             图像、几何、色彩、哈希、指标
+src/core/             图像、几何、色彩、哈希、指标、示例场景
 src/io/               PNG(zlib) / BMP / PPM 编解码
 src/ops/              算子实现与注册表
 src/pipeline/         JSON、Recipe、执行器
 src/cli/              命令行
+gui/                  Qt 6 桌面外壳（可选构建）
 tests/                40 项单元测试（零第三方依赖）
-docs/                 架构、设计基线、ADR
+scripts/              无 CMake 时的构建脚本
+docs/                 架构、设计基线、ADR、截图
 examples/recipes/     配方样例
 ```
 

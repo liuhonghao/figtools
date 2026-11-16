@@ -18,6 +18,7 @@
 #include "figtools/core/color.hpp"
 #include "figtools/core/hash.hpp"
 #include "figtools/core/metrics.hpp"
+#include "figtools/core/sample_scene.hpp"
 #include "figtools/io/image_io.hpp"
 #include "figtools/ops/registry.hpp"
 #include "figtools/pipeline/executor.hpp"
@@ -108,73 +109,6 @@ void print_metrics(const ImageMetrics& metrics) {
   std::printf("  MAE              : %.2f / 255\n", metrics.mae);
   std::printf("  Changed pixels   : %.1f %%\n", metrics.changed_ratio * 100.0);
   std::printf("  Identical        : %s\n", metrics.identical ? "yes" : "no");
-}
-
-// Deterministic demo scene: a brushed metal surface with grooves, a scratch
-// and sensor noise. Enough structure to show denoise / sharpen differences.
-Image make_demo_image(int width, int height, unsigned seed) {
-  Image image(width, height);
-  MutableImageView view = image.mutable_view();
-  std::uint32_t state = seed == 0 ? 0x9E3779B9U : seed;
-  const auto next_random = [&state]() {
-    state ^= state << 13U;
-    state ^= state >> 17U;
-    state ^= state << 5U;
-    return state;
-  };
-
-  for (int y = 0; y < height; ++y) {
-    for (int x = 0; x < width; ++x) {
-      const double fx = static_cast<double>(x) / static_cast<double>(width);
-      const double fy = static_cast<double>(y) / static_cast<double>(height);
-      double value = 92.0 + 36.0 * fx + 22.0 * fy;
-      value += 10.0 * std::sin(fx * 42.0) * std::exp(-fy * 1.5);
-      // Brushed-metal micro texture.
-      value += 4.0 * std::sin(fy * 420.0 + fx * 12.0);
-      // Grooves every 96 px.
-      if (x % 96 < 3) {
-        value -= 26.0;
-      }
-      // Sensor noise.
-      const int noise = static_cast<int>(next_random() % 13U) - 6;
-      value += static_cast<double>(noise);
-      const std::uint8_t v = clamp_u8(value);
-      view.set(x, y, Rgba{v, v, static_cast<std::uint8_t>(clamp_u8(value * 0.96)), 255});
-    }
-  }
-
-  // Circular inspection marks.
-  const int cx = width / 3;
-  const int cy = height / 2;
-  const int radius = std::min(width, height) / 5;
-  for (int y = cy - radius; y <= cy + radius; ++y) {
-    for (int x = cx - radius; x <= cx + radius; ++x) {
-      if (!image.view().contains(x, y)) {
-        continue;
-      }
-      const double dx = static_cast<double>(x - cx);
-      const double dy = static_cast<double>(y - cy);
-      const double distance = std::sqrt(dx * dx + dy * dy);
-      if (std::abs(distance - static_cast<double>(radius)) < 1.6) {
-        view.set(x, y, Rgba{232, 236, 240, 255});
-      }
-    }
-  }
-
-  // A scratch: the defect the pipeline should make obvious.
-  const int x0 = width * 2 / 3;
-  const int y0 = height / 4;
-  for (int t = 0; t < height / 2; ++t) {
-    const int x = x0 + static_cast<int>(28.0 * std::sin(static_cast<double>(t) * 0.035));
-    const int y = y0 + t;
-    for (int thickness = -1; thickness <= 1; ++thickness) {
-      if (image.view().contains(x + thickness, y)) {
-        view.set(x + thickness, y, Rgba{24, 22, 20, 255});
-      }
-    }
-  }
-
-  return image;
 }
 
 }  // namespace
@@ -411,7 +345,7 @@ int command_demo(const std::string& output_dir, int width, int height, unsigned 
 
   const int w = std::max(64, width);
   const int h = std::max(64, height);
-  Image before = make_demo_image(w, h, seed);
+  Image before = make_sample_scene(w, h, seed);
 
   const std::string dir = output_dir;
   const std::string before_path = dir + "/before.png";

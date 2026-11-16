@@ -3,11 +3,33 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.0] - 2026-11-16
+
+### Added
+
+- **Qt 6 桌面外壳**（`FIGTOOLS_BUILD_GUI=ON`）：左中右三栏，1400×900 默认尺寸。
+- **前后对比画布**：分割（可拖动分界线）、并排（同缩放）、只看结果三种模式；
+  滚轮缩放、拖动平移、`F` 适应窗口、`1` 实际像素。
+- **schema 驱动的处理链**：算子菜单按分组生成；每个算子的参数控件由 `ParamSpec`
+  自动创建（枚举→下拉、布尔→勾选、数值→滑块+数字框）；支持上移/下移/删除/单步禁用。
+- **图像属性与直方图**：尺寸、通道、像素数、内存占用；RGB 三通道直方图；均值与锐度。
+- **导出与配方**：`Ctrl+S` 按原始分辨率重跑处理链并导出；配方可保存/载入。
+- `make_sample_scene()` 从 CLI 提到 `ft_core`，命令行与界面共用同一个示例场景。
+- `scripts/build_gui.sh`：无 CMake 环境下的 MinGW 构建与运行库部署脚本。
+
+### Changed
+
+- CLI 的 `demo` 改用 `ft_core` 的示例场景实现，行为不变。
+
+### Known limitations
+
+- 界面预览运行在 ≤1400 px 的代理图上，导出才使用原始分辨率（导出前会提示耗时）。
+- 无标注、无批量任务队列、无多文档标签页。
+
 ## [Unreleased]
 
 ### Planned
 
-- Qt 6 桌面外壳与前后对比视图
 - 标注工作台与 COCO/YOLO 导出
 - Python 训练 worker 与 ONNX 交接
 - 批量任务中心与进度体系
