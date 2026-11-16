@@ -196,7 +196,7 @@ src/dataset/          数据集扫描、确定性划分、快照导出
 src/pipeline/         Recipe、执行器
 src/cli/              命令行
 gui/                  Qt 6 桌面外壳（可选构建）
-tests/                78 项单元测试（零第三方依赖）
+tests/                79 项单元测试（零第三方依赖）
 scripts/              无 CMake 时的构建脚本
 docs/                 架构、设计基线、ADR、截图
 examples/recipes/     配方样例

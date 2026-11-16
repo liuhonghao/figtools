@@ -56,6 +56,12 @@ bool RecipeHistory::commit(const Recipe& next, std::string label, std::string co
   return true;
 }
 
+void RecipeHistory::seal() {
+  if (index_ < entries_.size()) {
+    entries_[index_].token.clear();
+  }
+}
+
 bool RecipeHistory::undo() {
   if (!can_undo()) {
     return false;

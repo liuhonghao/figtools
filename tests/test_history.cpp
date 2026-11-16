@@ -97,6 +97,19 @@ TEST(history_same_token_coalesces_into_one_step) {
   CHECK_EQ(history.current().to_json(0), initial.to_json(0));
 }
 
+TEST(history_seal_splits_two_drags_of_the_same_control) {
+  const figtools::Recipe initial = make_recipe("contrast", 1.0);
+  figtools::RecipeHistory history(initial);
+
+  CHECK(history.commit(with_factor(initial, 1.2), "drag one", "param:0:factor"));
+  history.seal();
+  CHECK(history.commit(with_factor(initial, 1.4), "drag two", "param:0:factor"));
+
+  CHECK_EQ(history.depth(), static_cast<std::size_t>(3));
+  CHECK(history.undo());
+  CHECK_EQ(history.current().to_json(0), with_factor(initial, 1.2).to_json(0));
+}
+
 TEST(history_different_token_starts_a_new_step) {
   const figtools::Recipe initial = make_recipe("contrast", 1.0);
   figtools::RecipeHistory history(initial);

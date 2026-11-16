@@ -139,7 +139,7 @@ using OperatorFn = Result<Image>(const ImageView&, const Params&);
 
 ## 7. 测试策略
 
-`tests/` 零第三方依赖，78 项用例，跑完 < 1 秒：
+`tests/` 零第三方依赖，79 项用例，跑完 < 1 秒：
 
 | 文件 | 覆盖 |
 |---|---|

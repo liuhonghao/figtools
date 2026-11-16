@@ -1031,6 +1031,10 @@ QWidget* MainWindow::buildParamEditor(const ParamSpec& spec, const ParamValue& v
                 commitRecipe(action_label, param_token);
                 schedulePreview();
               });
+      // Releasing the slider closes the coalescing window: the next drag is a
+      // separate undo step even though it edits the same parameter.
+      connect(slider, &QSlider::sliderReleased, this, [this]() { history_.seal(); });
+      connect(spin, &QDoubleSpinBox::editingFinished, this, [this]() { history_.seal(); });
       connect(spin, &QDoubleSpinBox::valueChanged, this,
               [this, slider, spec, span, step_index, key_text, action_label, param_token](double number) {
                 const QSignalBlocker blocker(slider);

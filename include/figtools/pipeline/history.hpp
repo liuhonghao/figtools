@@ -42,6 +42,11 @@ class RecipeHistory {
   // ignored. Returns true when the history changed.
   bool commit(const Recipe& next, std::string label, std::string coalesce_token = {});
 
+  // Ends the current coalescing window: the next commit with the same token
+  // starts a new entry. Call on slider release / editing finished so two
+  // separate drags are two undo steps.
+  void seal();
+
   bool undo();
   bool redo();
 
