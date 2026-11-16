@@ -202,6 +202,7 @@ void TrainDialog::buildUi(const QString& data_hint) {
   log_ = new QListWidget(this);
   log_->setFont(theme::mono_font(11));
   log_->setSelectionMode(QAbstractItemView::NoSelection);
+  log_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   root->addWidget(log_, 1);
   appendLog(tr("选择数据目录与输出位置，然后点“开始训练”。"), theme::colour(theme::kTextFaint));
 
@@ -348,7 +349,7 @@ void TrainDialog::start() {
   progress_->setValue(0);
   progress_->show();
   status_label_->setText(tr("启动训练进程…"));
-  appendLog(QStringLiteral("%1 train.py --job %2").arg(python, job_path),
+  appendLog(QStringLiteral("%1 train.py --job %2").arg(python, QFileInfo(job_path).fileName()),
             theme::colour(theme::kTextFaint));
   setRunning(true);
 

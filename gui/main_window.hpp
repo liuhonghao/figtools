@@ -60,6 +60,7 @@ class MainWindow : public QMainWindow {
   void chooseModel();
   void loadModel(const QString& directory);
   void runInference();
+  void openBatchInferDialog(const QString& data_hint = QString());
   void refreshModelPanel();
 
  protected:

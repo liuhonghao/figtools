@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(figtools
-  VERSION 0.8.0
+  VERSION 0.9.0
   DESCRIPTION "Image processing workbench: deterministic pipelines, operator registry, CLI"
   HOMEPAGE_URL "https://github.com/liuhonghao/figtools"
   LANGUAGES CXX
@@ -160,6 +160,8 @@ if(FIGTOOLS_BUILD_GUI)
     gui/widgets.hpp
     gui/batch_dialog.cpp
     gui/batch_dialog.hpp
+    gui/batch_infer_dialog.cpp
+    gui/batch_infer_dialog.hpp
     gui/train_dialog.cpp
     gui/train_dialog.hpp
     gui/python_env.cpp

@@ -78,11 +78,26 @@ Prints one JSON object:
 {"label":"a","confidence":0.876,"topk":[{"label":"a","score":0.876}],"arch":"resnet18","ms":27.1}
 ```
 
+## Batch predict
+
+```bash
+python predict_batch.py --job batch_job.json
+```
+
+Job fields: `model`, `input` (folder or single image), `output` (`*.csv` or
+`*.jsonl`), `recursive`, `topk`, `batch_size`, `device`, `threshold`.
+
+stdout is NDJSON again: `phase` / `dataset` / `batch` (`done`, `total`,
+`seconds`) / `done` (`counts`, `low_confidence`, `output`) / `error`.
+Results contain `image`, `label`, `confidence`, and `label_1..k` / `score_1..k`.
+CSV is written with a UTF-8 BOM so Excel opens Chinese labels correctly.
+
 ## Smoke test
 
 ```bash
 python smoke_test.py
 ```
 
-Generates a tiny two-class dataset, trains for a few epochs, predicts an image
-and asserts the result. Requires the same packages as training.
+Generates a tiny two-class dataset, trains for a few epochs, predicts one
+image, then runs batch inference over the whole folder and checks the CSV row
+count. Requires the same packages as training.

@@ -113,7 +113,7 @@ using OperatorFn = Result<Image>(const ImageView&, const Params&);
 
 ## 4.7 Python 进程边界（训练与推理）
 
-产品主程序不链接 PyTorch。训练与推理是两个一次性 Python 进程：
+产品主程序不链接 PyTorch。训练、单图推理、批量推理都是独立 Python 进程：
 
 * `train.py --job job.json` → stdout 逐行 NDJSON（`dataset` / `epoch` / `done` / `error`），
   stderr 是给人看的日志；C++ 用 `QProcess` 读事件并更新进度条与日志列表。
@@ -122,8 +122,8 @@ using OperatorFn = Result<Image>(const ImageView&, const Params&);
 
 这样约定的好处：torch OOM 或崩溃只影响那个进程；模型格式由 `model.json` 描述，
 C++ 不必理解权重；未来换 ONNX Runtime 或长驻服务只需替换 worker，界面不变。
-代价是每次推理都要付一次解释器启动成本（约 1–3 秒），因此推理时给出明确的忙碌提示，
-批量推理留给 v0.9。
+单图推理仍要付一次解释器启动成本（约 1–3 秒），因此推理时给出明确的忙碌提示；
+批量推理（`predict_batch.py`）用一个进程处理整目录，把这项成本摊薄到每张图。
 
 ## 5. I/O 边界
 

@@ -108,10 +108,51 @@ def main() -> int:
         if result.get("label") != "alpha":
             sys.stderr.write(f"unexpected prediction: {result}\n")
             return 1
+        # Batch inference: one process for the whole folder.
+        batch_job = root / "batch_job.json"
+        batch_csv = root / "predictions.csv"
+        batch_job.write_text(
+            json.dumps(
+                {
+                    "model": str(output),
+                    "input": str(data),
+                    "output": str(batch_csv),
+                    "recursive": True,
+                    "topk": 2,
+                    "batch_size": 8,
+                    "device": "cpu",
+                }
+            ),
+            encoding="utf-8",
+        )
+        batch = subprocess.run(
+            [sys.executable, str(ROOT / "predict_batch.py"), "--job", str(batch_job)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+        if batch.returncode != 0:
+            sys.stderr.write(batch.stdout + batch.stderr)
+            return 1
+        batch_events = [
+            json.loads(line)
+            for line in batch.stdout.splitlines()
+            if line.strip().startswith("{")
+        ]
+        if not any(event.get("event") == "done" for event in batch_events):
+            sys.stderr.write("batch inference did not emit a 'done' event\n")
+            return 1
+        if not batch_csv.is_file() or len(batch_csv.read_text(encoding="utf-8-sig").splitlines()) != 17:
+            sys.stderr.write("batch CSV should contain a header and 16 predictions\n")
+            return 1
+
         print(
             "smoke ok: "
-            f"{len(events)} events, label={result['label']}, "
-            f"confidence={result['confidence']}, {result['ms']} ms"
+            f"{len(events)} train events, label={result['label']}, "
+            f"confidence={result['confidence']}, {result['ms']} ms; "
+            f"batch: 16 rows in {batch_events[-1]['seconds']} s"
         )
     return 0
 

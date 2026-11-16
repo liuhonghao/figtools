@@ -13,7 +13,7 @@
 #include "theme.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "0.8.0"
+#define FIGTOOLS_VERSION "0.9.0"
 #endif
 
 int main(int argc, char** argv) {
@@ -81,6 +81,17 @@ int main(int argc, char** argv) {
   if (open_index >= 0 && open_index + 1 < arguments.size()) {
     const QString path = arguments.at(open_index + 1);
     QTimer::singleShot(300, &window, [&window, path]() { window.loadPath(path); });
+  }
+
+  const int batch_infer_index = arguments.indexOf(QStringLiteral("--batch-infer-dialog"));
+  if (batch_infer_index >= 0 && batch_infer_index + 1 < arguments.size()) {
+    const QString directory = arguments.at(batch_infer_index + 1);
+    const int shot_index = arguments.indexOf(QStringLiteral("--screenshot"));
+    if (shot_index >= 0 && shot_index + 1 < arguments.size()) {
+      capture_dialog(arguments.at(shot_index + 1));
+    }
+    window.openBatchInferDialog(directory);
+    return 0;
   }
 
   const int infer_index = arguments.indexOf(QStringLiteral("--demo-infer"));

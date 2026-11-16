@@ -3,6 +3,22 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.0] - 2026-11-16
+
+### Added
+
+- **批量推理**（`python/predict_batch.py`）：一个进程分类整个目录，按批送模型，
+  输出 CSV（UTF-8 BOM，含 Top-K 标签与分数）或 JSONL；阈值以下标 `unknown`；
+  stdout 事件为 `phase` / `dataset` / `batch` / `done` / `error`。
+- **批量推理对话框**（`Ctrl+Shift+R`）：模型/输入/结果文件、Top-K、批大小、设备、
+  递归开关、Python 解释器；进度、逐批日志、取消与“打开结果”。
+- `smoke_test.py` 覆盖批量推理：训练后跑整目录并断言 CSV 行数。
+
+### Changed
+
+- 训练与批量推理对话框的“包含子目录”改用拨动开关；日志首行不再打印完整长路径，
+  并关闭列表的水平滚动条。
+
 ## [0.8.0] - 2026-11-16
 
 ### Added

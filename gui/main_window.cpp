@@ -58,6 +58,7 @@
 #include "figtools/ops/registry.hpp"
 #include "histogram_widget.hpp"
 #include "batch_dialog.hpp"
+#include "batch_infer_dialog.hpp"
 #include "image_canvas.hpp"
 #include "python_env.hpp"
 #include "train_dialog.hpp"
@@ -65,7 +66,7 @@
 #include "widgets.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "0.8.0"
+#define FIGTOOLS_VERSION "0.9.0"
 #endif
 
 namespace figtools::gui {
@@ -271,6 +272,10 @@ void MainWindow::buildActions() {
   auto* infer_action = model_menu->addAction(tr("对当前图像推理"));
   infer_action->setShortcut(QKeySequence(QStringLiteral("Ctrl+R")));
   connect(infer_action, &QAction::triggered, this, &MainWindow::runInference);
+  auto* batch_infer_action = model_menu->addAction(tr("批量推理…"));
+  batch_infer_action->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+R")));
+  connect(batch_infer_action, &QAction::triggered, this,
+          [this]() { openBatchInferDialog(); });
 
   auto* help_menu = menuBar()->addMenu(tr("帮助(&H)"));
   auto* about_action = help_menu->addAction(tr("关于 figtools"));
@@ -2026,6 +2031,14 @@ void MainWindow::runInference() {
              .arg(prediction_label_)
              .arg(prediction_confidence_ * 100.0, 0, 'f', 1),
          5000);
+}
+
+void MainWindow::openBatchInferDialog(const QString& data_hint) {
+  const QString hint = !data_hint.isEmpty()
+                           ? data_hint
+                           : (dataset_path_.isEmpty() ? last_open_dir_ : dataset_path_);
+  BatchInferDialog dialog(model_dir_, hint, this);
+  dialog.exec();
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {

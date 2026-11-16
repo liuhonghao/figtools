@@ -20,7 +20,8 @@
 | **v0.6** | 批量处理：目录扫描、逐张套用管线、进度/日志/取消、跳过已存在 | ✅ 可用 |
 | **v0.7** | 撤销/重做：配方快照历史、参数拖动合并、Ctrl+Z / Ctrl+Y | ✅ 可用 |
 | **v0.8** | Python 训练与推理：PyTorch 分类训练、模型包、推理结果上画布 | ✅ 可用 |
-| v0.9 | ONNX 导出、批量推理、检测/分割模型 | 规划中 |
+| **v0.9** | 批量推理：单进程跑整目录、CSV/JSONL 结果、进度与取消 | ✅ 可用 |
+| v1.0 | ONNX 导出、检测/分割模型、长驻 worker | 规划中 |
 | v1.0 | 插件 ABI、批量任务中心、团队模式 | 规划中 |
 
 ![workbench](docs/images/workbench.png)
@@ -34,6 +35,8 @@
 ![training](docs/images/training.png)
 
 ![inference](docs/images/inference.png)
+
+![batch inference](docs/images/batch_infer.png)
 
 当前仓库是**可运行的纵向切片**，不是界面原型：`figtools demo` 会真的生成图像、跑处理链、写出结果并给出 PSNR/SSIM。
 
@@ -55,6 +58,10 @@ python python/smoke_test.py
 loss / 训练精度 / 验证精度；**模型 → 载入模型…** 之后按 `Ctrl+R` 对当前图像推理，
 结果同时出现在右栏和画布上的赤陶色标签里。解释器会自动在 `~/.conda/envs` 中找带 torch 的环境，
 也可用 `FIGTOOLS_PYTHON` 指定。详见 [python/README.md](python/README.md)。
+
+**模型 → 批量推理**：`Ctrl+Shift+R` 打开批量推理，用一个 Python 进程分类整个目录，
+进度实时回传，结果写成 CSV（含 Top-K 标签与分数）或 JSONL，可按阈值把低置信度标为 `unknown`。
+一次启动处理 40 张图只需 0.08 秒纯推理时间，避免每张图都付一次解释器启动成本。
 
 ## 它解决什么问题
 
