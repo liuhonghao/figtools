@@ -22,7 +22,7 @@
 #include "figtools/io/image_io.hpp"
 #include "figtools/ops/registry.hpp"
 #include "figtools/pipeline/executor.hpp"
-#include "figtools/pipeline/json.hpp"
+#include "figtools/json/json.hpp"
 #include "figtools/pipeline/recipe.hpp"
 
 namespace figtools::cli {

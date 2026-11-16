@@ -72,14 +72,39 @@ target_link_libraries(ft_ops PUBLIC ft_core PRIVATE figtools::warnings)
 add_library(figtools::ops ALIAS ft_ops)
 
 # ---------------------------------------------------------------------------
-# ft_pipeline -- JSON, recipes, executor
+# ft_json -- dependency-free JSON reader/writer
+# ---------------------------------------------------------------------------
+add_library(ft_json STATIC
+  src/json/json.cpp
+)
+target_include_directories(ft_json PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(ft_json PRIVATE figtools::warnings)
+add_library(figtools::json ALIAS ft_json)
+
+# ---------------------------------------------------------------------------
+# ft_annotate -- shapes, label schema, COCO/YOLO export
+# ---------------------------------------------------------------------------
+add_library(ft_annotate STATIC
+  src/annotate/annotation.cpp
+)
+target_include_directories(ft_annotate PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(ft_annotate PUBLIC ft_core ft_json PRIVATE figtools::warnings)
+add_library(figtools::annotate ALIAS ft_annotate)
+
+# ---------------------------------------------------------------------------
+# ft_pipeline -- recipes and executor
 # ---------------------------------------------------------------------------
 add_library(ft_pipeline STATIC
-  src/pipeline/json.cpp
   src/pipeline/recipe.cpp
   src/pipeline/executor.cpp
 )
-target_link_libraries(ft_pipeline PUBLIC ft_core ft_io ft_ops PRIVATE figtools::warnings)
+target_link_libraries(ft_pipeline PUBLIC ft_core ft_io ft_ops ft_json PRIVATE figtools::warnings)
 add_library(figtools::pipeline ALIAS ft_pipeline)
 
 # ---------------------------------------------------------------------------
@@ -105,7 +130,7 @@ if(FIGTOOLS_BUILD_GUI)
   )
   target_include_directories(figtools_gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gui)
   target_compile_definitions(figtools_gui PRIVATE FIGTOOLS_VERSION="${PROJECT_VERSION}")
-  target_link_libraries(figtools_gui PRIVATE ft_pipeline Qt6::Widgets figtools::warnings)
+  target_link_libraries(figtools_gui PRIVATE ft_pipeline ft_annotate Qt6::Widgets figtools::warnings)
   set_target_properties(figtools_gui PROPERTIES AUTOMOC ON)
   install(TARGETS figtools_gui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
@@ -121,8 +146,9 @@ if(FIGTOOLS_BUILD_TESTS)
     tests/test_ops.cpp
     tests/test_io.cpp
     tests/test_pipeline.cpp
+    tests/test_annotate.cpp
   )
-  target_link_libraries(ft_tests PRIVATE ft_pipeline figtools::warnings)
+  target_link_libraries(ft_tests PRIVATE ft_pipeline ft_annotate figtools::warnings)
   target_include_directories(ft_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
   add_test(NAME unit COMMAND ft_tests)
 endif()

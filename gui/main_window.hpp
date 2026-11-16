@@ -14,10 +14,13 @@
 
 #include "figtools/core/image.hpp"
 #include "figtools/pipeline/executor.hpp"
+#include "figtools/annotate/annotation.hpp"
 #include "figtools/pipeline/recipe.hpp"
 
 class QComboBox;
 class QLabel;
+class QListWidget;
+class QTabWidget;
 class QProgressBar;
 class QVBoxLayout;
 class QWidget;
@@ -36,6 +39,7 @@ class MainWindow : public QMainWindow {
   // Loads an image from disk. Returns false when the file cannot be decoded.
   bool loadPath(const QString& path);
   void loadSample();
+  void addDemoAnnotations();
 
  protected:
   void dragEnterEvent(QDragEnterEvent* event) override;
@@ -57,6 +61,11 @@ class MainWindow : public QMainWindow {
   void saveRecipe();
   void loadRecipe();
   void updateInfoPanel();
+  void rebuildClassList();
+  void refreshAnnotationLists();
+  void exportAnnotations(bool coco);
+  void saveAnnotations();
+  void loadAnnotations();
   void setBusy(bool busy, const QString& message = QString());
 
   [[nodiscard]] QWidget* buildParamEditor(const ParamSpec& spec, const ParamValue& value,
@@ -82,6 +91,11 @@ class MainWindow : public QMainWindow {
   QLabel* status_zoom_ = nullptr;
   QLabel* status_position_ = nullptr;
   QLabel* status_time_ = nullptr;
+  QListWidget* class_list_ = nullptr;
+  QListWidget* shape_list_ = nullptr;
+  QTabWidget* tabs_ = nullptr;
+  AnnotationSet annotations_;
+  int active_class_ = 0;
   QProgressBar* progress_ = nullptr;
   QTimer* preview_timer_ = nullptr;
 };

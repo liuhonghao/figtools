@@ -13,10 +13,14 @@
 #define FIGTOOLS_GUI_IMAGE_CANVAS_HPP_
 
 #include <QImage>
+#include <QPointF>
 #include <QPoint>
 #include <QPointF>
 #include <QWidget>
 #include <functional>
+#include <vector>
+
+#include "figtools/annotate/annotation.hpp"
 
 class QMouseEvent;
 class QPaintEvent;
@@ -29,6 +33,7 @@ class ImageCanvas : public QWidget {
 
  public:
   enum class Mode { kSplit, kSide, kResult };
+  enum class Tool { kNone, kRect, kPolygon };
 
   explicit ImageCanvas(QWidget* parent = nullptr);
 
@@ -41,6 +46,15 @@ class ImageCanvas : public QWidget {
   void zoomToActualSize();
   [[nodiscard]] double zoom() const { return zoom_; }
 
+  void setTool(Tool tool);
+  [[nodiscard]] Tool tool() const { return tool_; }
+  void setAnnotationSet(figtools::AnnotationSet* annotations);
+  void setActiveClass(int class_id);
+  void setAnnotationsVisible(bool visible);
+  void setAnnotationCallback(std::function<void()> callback);
+  [[nodiscard]] int selected_index() const { return selected_; }
+  void setSelectedIndex(int index);
+
   void setStatusCallback(std::function<void(const QString&)> callback);
   void setCursorCallback(std::function<void(QPoint, bool)> callback);
   void setZoomCallback(std::function<void(double)> callback);
@@ -50,8 +64,10 @@ class ImageCanvas : public QWidget {
   void mousePressEvent(QMouseEvent* event) override;
   void mouseMoveEvent(QMouseEvent* event) override;
   void mouseReleaseEvent(QMouseEvent* event) override;
+  void mouseDoubleClickEvent(QMouseEvent* event) override;
   void wheelEvent(QWheelEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
+  void keyPressEvent(QKeyEvent* event) override;
 
  private:
   [[nodiscard]] QRectF fittedRect(const QSize& image_size, const QRectF& viewport,
@@ -60,6 +76,12 @@ class ImageCanvas : public QWidget {
   [[nodiscard]] double dividerX() const;
   [[nodiscard]] QPoint toImagePoint(QPoint widget_point) const;
   void drawEmptyState(QPainter& painter);
+  void drawAnnotations(QPainter& painter);
+  [[nodiscard]] QRectF displayedImageRect() const;
+  [[nodiscard]] QPointF toImagePointF(QPointF widget_point) const;
+  [[nodiscard]] int hitTest(QPointF image_point) const;
+  void finishPolygon();
+  void finishRect();
 
   QImage before_;
   QImage after_;
@@ -71,6 +93,17 @@ class ImageCanvas : public QWidget {
   bool panning_ = false;
   QPoint last_mouse_;
   bool auto_fit_ = true;
+
+  Tool tool_ = Tool::kNone;
+  AnnotationSet* annotations_ = nullptr;
+  int active_class_ = 0;
+  int selected_ = -1;
+  bool annotations_visible_ = true;
+  bool drawing_rect_ = false;
+  QPointF rect_start_;
+  QPointF rect_current_;
+  std::vector<Point2f> polygon_draft_;
+  std::function<void()> annotation_callback_;
 
   std::function<void(const QString&)> status_callback_;
   std::function<void(QPoint, bool)> cursor_callback_;

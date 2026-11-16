@@ -31,7 +31,9 @@
 | `ft_core` | 像素容器、几何、色彩原语、哈希、指标 | 无（仅 STL） |
 | `ft_io` | 编解码与格式探测 | `ft_core`、zlib |
 | `ft_ops` | 算子实现 + 注册表 + 参数规范化 | `ft_core` |
-| `ft_pipeline` | JSON、Recipe、执行与缓存键 | `ft_core` `ft_io` `ft_ops` |
+| `ft_json` | 零依赖 JSON 读写 | 无 |
+| `ft_annotate` | 标注模型、COCO/YOLO 导出 | `ft_core` `ft_json` |
+| `ft_pipeline` | Recipe、执行与缓存键 | `ft_core` `ft_io` `ft_ops` `ft_json` |
 | `figtools` | CLI | `ft_pipeline` |
 
 ## 2. 错误模型
@@ -76,6 +78,22 @@ using OperatorFn = Result<Image>(const ImageView&, const Params&);
 - **显式注册**：`Registry::instance()` 首次调用时依次调用 `register_geometry_ops` / `register_color_ops` / `register_filter_ops`。不用静态初始化器，避免静态库链接时目标文件被丢弃。
 - **几何算子带 `geometry=true`**：上层据此判断是否需要同步标注坐标、是否重建金字塔。
 
+## 4.5 标注坐标空间
+
+标注存的是**当时画布上那张结果图**的坐标（float，原图像素单位），并记录
+`image_width / image_height`。这样"看到什么就标什么"成立，导出也不必反推缩放。
+
+代价是：如果处理链改了输出尺寸（裁剪、缩放），已有标注与新画面不再对齐。
+当前策略是**明确提示而不是静默重投影**——状态栏提示"输出尺寸已变化，已有标注仍基于
+1200 × 800"。真正的解法是给每个标注记录它所属的资产版本，留到 v0.4 与数据集版本一起做。
+
+导出：
+
+- **COCO**：单图，`bbox` 用外接框，`area` 用真实面积（多边形为鞋带公式），
+  `segmentation` 矩形写成 4 点环、多边形写成顶点序列。
+- **YOLO**：类别用**类别列表下标**（不是 `id`），坐标按图像尺寸归一化；
+  多边形退化为外接框（检测格式），分割训练需要 YOLO-seg 的额外格式，v0.4 补。
+
 ## 5. I/O 边界
 
 - 解码器统一输出 RGBA8。灰度复制三通道，调色板展开，24 位 BMP 补 alpha=255。
@@ -112,6 +130,7 @@ using OperatorFn = Result<Image>(const ImageView&, const Params&);
 | `test_ops.cpp` | 注册表完整性、参数规范化（默认值/未知参数/越界/非整数）、算子不变量（gamma=1 恒等、阈值只出 0/255） |
 | `test_io.cpp` | 三种格式往返逐像素比对、探测、错误路径 |
 | `test_pipeline.cpp` | 配方往返稳定、非法配方拒绝、执行确定性、禁用步骤跳过 |
+| `test_annotate.cpp` | 面积/外接框/命中判定、COCO 与 YOLO 归一化、JSON 往返字节一致 |
 
 原则：**测不变量，不测实现**。例如不测「median 的第 3 行第 7 列是 128」，而测「孤立噪点被消除」「输出尺寸不变」。
 

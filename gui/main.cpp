@@ -73,6 +73,9 @@ int main(int argc, char** argv) {
   // Headless verification hook: render the window once and exit. Used by CI
   // and by the screenshot script so UI regressions produce a diffable artefact.
   const QStringList arguments = QApplication::arguments();
+  if (arguments.contains(QStringLiteral("--demo-annotations"))) {
+    QTimer::singleShot(600, &window, [&window]() { window.addDemoAnnotations(); });
+  }
   const int index = arguments.indexOf(QStringLiteral("--screenshot"));
   if (index >= 0 && index + 1 < arguments.size()) {
     const QString path = arguments.at(index + 1);

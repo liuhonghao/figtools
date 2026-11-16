@@ -1,7 +1,7 @@
 // Copyright 2026 figtools authors
 // SPDX-License-Identifier: MIT
 
-#include "figtools/pipeline/json.hpp"
+#include "figtools/json/json.hpp"
 
 #include <array>
 #include <charconv>

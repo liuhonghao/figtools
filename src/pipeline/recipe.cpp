@@ -7,7 +7,7 @@
 #include <string>
 #include <utility>
 
-#include "figtools/pipeline/json.hpp"
+#include "figtools/json/json.hpp"
 
 namespace figtools {
 namespace {

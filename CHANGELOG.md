@@ -3,6 +3,26 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] - 2026-11-16
+
+### Added
+
+- **ft_annotate**：`Shape`（矩形 / 多边形）、`LabelClass`、`AnnotationSet`；
+  多边形面积用鞋带公式，点在多边形内用射线法，矩形与多边形统一走 `bounding_box()`。
+- **标注序列化**：原生 JSON 往返（含类别色、图像尺寸），导出 **COCO**
+  （`images` / `annotations` / `categories`，含 `segmentation` 与 `area`）与
+  **YOLO**（`class cx cy w h` 归一化，多边形取外接框）。
+- **界面标注页**：类别列表（色块）、选择/矩形/多边形三种工具、标注列表、
+  选中后 Delete 删除、`Esc` 取消、双击或回车闭合多边形。
+- **标注文件存取**与两种格式导出按钮；标注坐标以当前结果图尺寸为基准，
+  管线改变输出尺寸时状态栏给出提示。
+- `--demo-annotations` 启动参数，用示例图预置两个标注，便于演示与截图。
+
+### Changed
+
+- **拆分 ft_json**：JSON 读写从 `ft_pipeline` 独立为 `ft_json`，使标注模块
+  不必依赖图像编解码。`figtools/json/json.hpp` 为新的公共头路径。
+
 ## [0.2.0] - 2026-11-16
 
 ### Added

@@ -7,8 +7,8 @@
 // their parser is kept small, auditable and dependency free. Object member
 // order is preserved, which makes `dump()` stable and diff-friendly.
 
-#ifndef FIGTOOLS_PIPELINE_JSON_HPP_
-#define FIGTOOLS_PIPELINE_JSON_HPP_
+#ifndef FIGTOOLS_JSON_JSON_HPP_
+#define FIGTOOLS_JSON_JSON_HPP_
 
 #include <string>
 #include <string_view>
@@ -73,4 +73,4 @@ class Json {
 
 }  // namespace figtools
 
-#endif  // FIGTOOLS_PIPELINE_JSON_HPP_
+#endif  // FIGTOOLS_JSON_JSON_HPP_
