@@ -159,6 +159,7 @@ void BatchInferDialog::buildUi(const QString& model_hint, const QString& data_hi
   status_label_->setFont(theme::mono_font(11));
   root->addWidget(status_label_);
 
+  root->addWidget(theme::dock_title(tr("运行日志"), this));
   log_ = new QListWidget(this);
   log_->setFont(theme::mono_font(11));
   log_->setSelectionMode(QAbstractItemView::NoSelection);

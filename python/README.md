@@ -10,7 +10,13 @@ processes and reads JSON events from stdout, so:
 ## Requirements
 
 Python 3.9+ with `torch`, `torchvision` and `Pillow`. See `requirements.txt`.
-The project was verified with Python 3.10 / torch 2.11 (CUDA optional).
+The project was verified with Python 3.10 / torch 2.11 / CUDA 12.8.
+
+**Optional — YOLO:** `pip install ultralytics>=8.4` in the training environment.
+Ultralytics is **AGPL-3.0**. It is a separately installed training component and
+is never bundled, linked into, or distributed with the C++ desktop app. The app
+itself keeps working (classification, patch detector, all editing features)
+without it; only the "YOLO 目标检测" task needs it.
 
 In the desktop app open **模型 → 训练模型…** and set the Python interpreter.
 The app also auto-detects conda environments under `~/.conda/envs` that contain
@@ -66,7 +72,61 @@ During training stdout carries one JSON object per line:
 
 Human-readable logs go to stderr.
 
-## Detect (annotation-trained detector)
+## YOLO detector (recommended)
+
+The primary detection path uses Ultralytics YOLO (v8 / v11). It trains a real
+detection head from the annotation boxes, so unlike the patch baseline it
+handles multiple / multi-scale objects in one pass.
+
+Prepare a snapshot with the 数据集 page (annotate first), then:
+
+```json
+{
+  "data": "D:/data/detect-snapshot",
+  "output": "D:/models/yolo-run1",
+  "variant": "yolo11n.pt",
+  "epochs": 50,
+  "imgsz": 640,
+  "batch_size": 16,
+  "lr": 0.001,
+  "seed": 2026,
+  "device": "auto",
+  "patience": 0
+}
+```
+
+```bash
+python train_yolo.py --job job.json
+```
+
+`train_yolo.py` first converts the snapshot to the YOLO layout
+(`images/{train,val,test}`, `labels/{train,val,test}`, `data.yaml`), then trains
+and writes a model package:
+
+| file | contents |
+|---|---|
+| `best.pt` | native Ultralytics weights (retrain / export) |
+| `weights.onnx` | ONNX export when available (best-effort) |
+| `model.json` | `kind:"yolo"`, class names, id remap, metrics |
+| `metrics.json` | per-epoch mAP / loss curves |
+| `dataset/`, `classes.json`, `job.json` | exact inputs for reproducibility |
+
+stdout uses the same NDJSON protocol; epoch events carry `mAP50`, `mAP50_95`,
+`box_loss`, `cls_loss` and `total_epochs`. Class ids are remapped to a contiguous
+YOLO range and mapped back on inference via `yolo_index_to_figtools_id`.
+
+```bash
+python detect_yolo.py --model D:/models/yolo-run1 --image D:/data/new.png \
+    --conf 0.25 --iou 0.45
+```
+
+It prints the same JSON shape as `detect.py` (`detections` with
+label/confidence/x/y/w/h), so the desktop canvas draws the boxes unchanged.
+In the GUI choose 任务 = "YOLO 目标检测（推荐）" when training, then
+**模型 → 检测当前图像** (`Ctrl+D`). If ultralytics is missing the worker emits a
+clear `error` event instead of crashing.
+
+## Detect (patch baseline, no extra dependency)
 
 Classification assigns one label to a whole image. To find **where** something
 is, train a detector from the boxes/polygons drawn in the 标注 page. This is a

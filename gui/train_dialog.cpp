@@ -47,7 +47,7 @@ QString format_metric(double value) { return QString::number(value, 'f', 3); }
 TrainDialog::TrainDialog(const QString& data_hint, QWidget* parent) : QDialog(parent) {
   setWindowTitle(tr("训练模型"));
   setModal(true);
-  resize(700, 620);
+  resize(720, 560);
   buildUi(data_hint);
 }
 
@@ -61,14 +61,14 @@ TrainDialog::~TrainDialog() {
 void TrainDialog::buildUi(const QString& data_hint) {
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(20, 18, 20, 18);
-  root->setSpacing(12);
+  root->setSpacing(8);
 
   auto* title = new QLabel(tr("训练模型"), this);
   title->setFont(theme::ui_font(16, QFont::DemiBold));
   root->addWidget(title);
 
   auto* subtitle = new QLabel(
-      tr("用 PyTorch 训练模型：分类用类文件夹或数据集快照；检测用带标注框的数据集快照，从标注中裁切正负样本。"),
+      tr("训练模型：分类用类文件夹或数据集快照；检测用带标注框的数据集快照。YOLO 需另装 ultralytics，patch 基线无需额外依赖。"),
       this);
   subtitle->setObjectName(QStringLiteral("Meta"));
   subtitle->setFont(theme::ui_font(11));
@@ -78,7 +78,7 @@ void TrainDialog::buildUi(const QString& data_hint) {
 
   auto* grid = new QGridLayout();
   grid->setHorizontalSpacing(10);
-  grid->setVerticalSpacing(10);
+  grid->setVerticalSpacing(6);
   grid->setColumnStretch(1, 1);
 
   const auto field_label = [this](const QString& text) {
@@ -97,7 +97,8 @@ void TrainDialog::buildUi(const QString& data_hint) {
 
   task_combo_ = new QComboBox(this);
   task_combo_->addItem(tr("图像分类（整图一个标签）"), QStringLiteral("classifier"));
-  task_combo_->addItem(tr("目标检测（从标注框学习）"), QStringLiteral("detector"));
+  task_combo_->addItem(tr("YOLO 目标检测（推荐，需 ultralytics）"), QStringLiteral("yolo"));
+  task_combo_->addItem(tr("目标检测 patch 基线（无需额外依赖）"), QStringLiteral("detector"));
   task_combo_->setFixedWidth(230);
   auto* task_row = new QHBoxLayout();
   task_row->setSpacing(8);
@@ -212,6 +213,7 @@ void TrainDialog::buildUi(const QString& data_hint) {
   status_label_->setFont(theme::mono_font(11));
   root->addWidget(status_label_);
 
+  root->addWidget(theme::dock_title(tr("训练日志"), this));
   log_ = new QListWidget(this);
   log_->setFont(theme::mono_font(11));
   log_->setSelectionMode(QAbstractItemView::NoSelection);
@@ -257,9 +259,13 @@ void TrainDialog::buildUi(const QString& data_hint) {
   if (const int index = arch_combo_->findData(arch); index >= 0) {
     arch_combo_->setCurrentIndex(index);
   }
-  const int default_input = isDetection() ? 64 : 224;
-  const int default_epochs = isDetection() ? 15 : 20;
-  const int default_batch = isDetection() ? 32 : 16;
+  const QString kind = taskKind();
+  const int default_input = kind == QLatin1String("yolo") ? 640
+                            : (kind == QLatin1String("detector") ? 64 : 224);
+  const int default_epochs = kind == QLatin1String("yolo") ? 50
+                             : (kind == QLatin1String("detector") ? 15 : 20);
+  const int default_batch = kind == QLatin1String("yolo") ? 16
+                            : (kind == QLatin1String("detector") ? 32 : 16);
   input_spin_->setValue(settings.value(QStringLiteral("train/input"), default_input).toInt());
   epochs_spin_->setValue(settings.value(QStringLiteral("train/epochs"), default_epochs).toInt());
   batch_spin_->setValue(settings.value(QStringLiteral("train/batch"), default_batch).toInt());
@@ -270,15 +276,24 @@ void TrainDialog::buildUi(const QString& data_hint) {
   }
 }
 
+QString TrainDialog::taskKind() const {
+  return task_combo_ != nullptr ? task_combo_->currentData().toString()
+                                : QStringLiteral("classifier");
+}
+
 bool TrainDialog::isDetection() const {
-  return task_combo_ != nullptr && task_combo_->currentData().toString() == QLatin1String("detector");
+  const QString kind = taskKind();
+  return kind == QLatin1String("detector") || kind == QLatin1String("yolo");
 }
 
 void TrainDialog::applyTaskDefaults() {
-  if (isDetection()) {
+  if (taskKind() == QLatin1String("yolo")) {
+    data_edit_->setPlaceholderText(tr("数据集快照目录（含 dataset.json 与标注框）"));
+    input_spin_->setValue(640);
+    epochs_spin_->setValue(50);
+    batch_spin_->setValue(16);
+  } else if (taskKind() == QLatin1String("detector")) {
     data_edit_->setPlaceholderText(tr("数据集快照目录（含 dataset.json 与标注）"));
-    // A patch classifier sees small crops; 64 px keeps it fast and is what the
-    // detection worker defaults to. Users can still change it.
     input_spin_->setValue(64);
     epochs_spin_->setValue(15);
     batch_spin_->setValue(32);
@@ -343,8 +358,10 @@ void TrainDialog::start() {
     return;
   }
   const QString scripts = python_scripts_dir();
-  const bool detection = isDetection();
-  const QString script = detection ? QStringLiteral("train_detect.py") : QStringLiteral("train.py");
+  const QString kind = taskKind();
+  const QString script = kind == QLatin1String("yolo") ? QStringLiteral("train_yolo.py")
+                         : (kind == QLatin1String("detector") ? QStringLiteral("train_detect.py")
+                                                              : QStringLiteral("train.py"));
   if (!QFileInfo::exists(scripts + QLatin1Char('/') + script)) {
     appendLog(tr("找不到训练脚本：%1/%2").arg(scripts, script), theme::colour(theme::kDanger));
     return;
@@ -362,7 +379,10 @@ void TrainDialog::start() {
   job.insert(QStringLiteral("device"), device_combo_->currentData().toString());
   job.insert(QStringLiteral("seed"), 2026);
   job.insert(QStringLiteral("val_ratio"), 0.2);
-  if (detection) {
+  if (kind == QLatin1String("yolo")) {
+    job.insert(QStringLiteral("imgsz"), input_spin_->value());
+    job.insert(QStringLiteral("variant"), QStringLiteral("yolo11n.pt"));
+  } else if (kind == QLatin1String("detector")) {
     job.insert(QStringLiteral("patch_size"), input_spin_->value());
     job.insert(QStringLiteral("positives_per_box"), 3);
     job.insert(QStringLiteral("negatives"), 3);
@@ -491,29 +511,53 @@ void TrainDialog::handleEvent(const QString& line) {
               theme::colour(theme::kTextDim));
   } else if (name == QStringLiteral("epoch")) {
     const int epoch = event.value(QStringLiteral("epoch")).toInt();
-    const int total = event.value(QStringLiteral("epochs")).toInt();
+    // Classifiers emit "epochs"; YOLO emits "total_epochs". Likewise the
+    // quality field is val_accuracy for classifiers and mAP50 for YOLO.
+    const int total = event.contains(QStringLiteral("total_epochs"))
+                          ? event.value(QStringLiteral("total_epochs")).toInt()
+                          : event.value(QStringLiteral("epochs")).toInt();
+    const bool yolo = event.contains(QStringLiteral("mAP50"));
+    const double loss = yolo ? event.value(QStringLiteral("box_loss")).toDouble()
+                             : event.value(QStringLiteral("train_loss")).toDouble();
+    const double score = yolo ? event.value(QStringLiteral("mAP50")).toDouble()
+                              : event.value(QStringLiteral("val_accuracy")).toDouble();
     progress_->setRange(1, std::max(1, total));
     progress_->setValue(epoch);
-    status_label_->setText(tr("第 %1/%2 轮  ·  loss %3  ·  验证 %4")
+    status_label_->setText(tr("第 %1/%2 轮  ·  loss %3  ·  %4")
                                .arg(epoch)
                                .arg(total)
-                               .arg(format_metric(event.value(QStringLiteral("train_loss")).toDouble()),
-                                    format_metric(event.value(QStringLiteral("val_accuracy")).toDouble())));
-    appendLog(tr("轮 %1/%2  loss %3  train %4  val %5")
-                  .arg(epoch)
-                  .arg(total)
-                  .arg(format_metric(event.value(QStringLiteral("train_loss")).toDouble()),
-                       format_metric(event.value(QStringLiteral("train_accuracy")).toDouble()),
-                       format_metric(event.value(QStringLiteral("val_accuracy")).toDouble())),
-              theme::colour(theme::kTextDim));
+                               .arg(format_metric(loss), format_metric(score)));
+    if (yolo) {
+      appendLog(tr("轮 %1/%2  box_loss %3  cls_loss %4  mAP50 %5  mAP50-95 %6")
+                    .arg(epoch)
+                    .arg(total)
+                    .arg(format_metric(loss),
+                         format_metric(event.value(QStringLiteral("cls_loss")).toDouble()),
+                         format_metric(score),
+                         format_metric(event.value(QStringLiteral("mAP50_95")).toDouble())),
+                theme::colour(theme::kTextDim));
+    } else {
+      appendLog(tr("轮 %1/%2  loss %3  train %4  val %5")
+                    .arg(epoch)
+                    .arg(total)
+                    .arg(format_metric(loss),
+                         format_metric(event.value(QStringLiteral("train_accuracy")).toDouble()),
+                         format_metric(score)),
+                theme::colour(theme::kTextDim));
+    }
   } else if (name == QStringLiteral("done")) {
     succeeded_ = true;
     last_model_dir_ = event.value(QStringLiteral("model_dir")).toString();
-    const double val = event.value(QStringLiteral("val_accuracy")).toDouble();
+    const bool yolo_done = event.contains(QStringLiteral("mAP50"));
+    const double val = yolo_done ? event.value(QStringLiteral("mAP50")).toDouble()
+                                 : event.value(QStringLiteral("val_accuracy")).toDouble();
     const double test = event.value(QStringLiteral("test_accuracy")).toDouble();
     const double seconds = event.value(QStringLiteral("seconds")).toDouble();
-    status_label_->setText(tr("训练完成 · 验证 %1 · 测试 %2 · %3 s")
-                               .arg(format_metric(val), format_metric(test))
+    status_label_->setText(tr("训练完成 · %1 %2%3 · %4 s")
+                               .arg(yolo_done ? tr("mAP50") : tr("验证"))
+                               .arg(format_metric(val))
+                               .arg(test > 0.0 ? tr(" · 测试 %1").arg(format_metric(test))
+                                               : QString())
                                .arg(seconds, 0, 'f', 1));
     appendLog(tr("模型已写入 %1").arg(last_model_dir_), theme::colour(theme::kSuccess));
     open_button_->setEnabled(!last_model_dir_.isEmpty());

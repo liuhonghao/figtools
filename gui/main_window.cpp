@@ -19,6 +19,8 @@
 #include <QIcon>
 #include <QLabel>
 #include <QListWidget>
+#include <functional>
+
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -33,10 +35,13 @@
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QSignalBlocker>
+#include <QStackedWidget>
+#include <QTreeWidget>
 #include <QSlider>
 #include <QSpinBox>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QTime>
 #include <QStyle>
 #include <QTabBar>
 #include <QTabWidget>
@@ -66,7 +71,7 @@
 #include "widgets.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.0.0"
+#define FIGTOOLS_VERSION "1.1.0"
 #endif
 
 namespace figtools::gui {
@@ -299,35 +304,76 @@ void MainWindow::buildActions() {
 
 void MainWindow::buildUi() {
   auto* central = new QWidget(this);
+  central->setObjectName(QStringLiteral("Workbench"));
   auto* outer = new QVBoxLayout(central);
   outer->setContentsMargins(0, 0, 0, 0);
   outer->setSpacing(0);
 
   buildTopBar(outer);
+  buildRibbon(outer);
 
-  auto* splitter = new QSplitter(Qt::Horizontal, central);
-  splitter->setChildrenCollapsible(false);
-  splitter->setHandleWidth(1);
+  auto* body = new QSplitter(Qt::Vertical, central);
+  body->setChildrenCollapsible(false);
+  body->setHandleWidth(1);
 
-  // ---- left ---------------------------------------------------------------
-  auto* left = new QFrame(splitter);
+  auto* horizontal = new QSplitter(Qt::Horizontal, body);
+  horizontal->setChildrenCollapsible(false);
+  horizontal->setHandleWidth(1);
+
+  // ---- left: project tree + the active work page --------------------------
+  auto* left = new QFrame(horizontal);
   left->setObjectName(QStringLiteral("PanelLeft"));
   auto* left_layout = new QVBoxLayout(left);
-  left_layout->setContentsMargins(0, 0, 0, 10);
+  left_layout->setContentsMargins(0, 0, 0, 0);
   left_layout->setSpacing(0);
+
+  auto* project_title = theme::dock_title(tr("项目"), left);
+  left_layout->addWidget(project_title);
+
+  QTreeWidget* project_tree = new QTreeWidget(left);
+  project_tree->setObjectName(QStringLiteral("ProjectTree"));
+  project_tree->setHeaderHidden(true);
+  project_tree->setRootIsDecorated(false);
+  project_tree->setMaximumHeight(112);
+  project_tree->setMinimumHeight(84);
+  auto* root_image = new QTreeWidgetItem(project_tree, {tr("图像")});
+  root_image->setIcon(0, theme::icon(theme::Glyph::kImage));
+  auto* root_anno = new QTreeWidgetItem(project_tree, {tr("标注")});
+  root_anno->setIcon(0, theme::icon(theme::Glyph::kAnnotate));
+  auto* root_data = new QTreeWidgetItem(project_tree, {tr("数据集")});
+  root_data->setIcon(0, theme::icon(theme::Glyph::kDataset));
+  project_tree->expandAll();
+  connect(project_tree, &QTreeWidget::currentItemChanged, this,
+          [this, root_image, root_anno, root_data](QTreeWidgetItem* current, QTreeWidgetItem*) {
+            if (current == root_image) {
+              setLeftPage(0);
+            } else if (current == root_anno) {
+              setLeftPage(1);
+            } else if (current == root_data) {
+              setLeftPage(2);
+            }
+          });
+
+  left_layout->addWidget(project_tree);
+  left_layout->addWidget(theme::hairline(left));
 
   tabs_ = new QTabWidget(left);
   tabs_->setDocumentMode(true);
-  tabs_->tabBar()->setExpanding(false);
-  tabs_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Ignored);
-  left_layout->addWidget(tabs_, 1);
-
+  tabs_->tabBar()->hide();  // navigation is now through the Ribbon / project tree
+  tabs_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
   tabs_->addTab(buildChainPage(tabs_), tr("处理"));
   tabs_->addTab(buildAnnotatePage(tabs_), tr("标注"));
   tabs_->addTab(buildDatasetPage(tabs_), tr("数据集"));
+  left_layout->addWidget(tabs_, 1);
 
-  // ---- centre -------------------------------------------------------------
-  canvas_ = new ImageCanvas(splitter);
+  // ---- centre: view toolbar + canvas --------------------------------------
+  auto* centre = new QWidget(horizontal);
+  auto* centre_layout = new QVBoxLayout(centre);
+  centre_layout->setContentsMargins(0, 0, 0, 0);
+  centre_layout->setSpacing(0);
+  centre_layout->addWidget(buildViewToolbar(centre));
+
+  canvas_ = new ImageCanvas(centre);
   canvas_->setAnnotationSet(&annotations_);
   canvas_->setAnnotationCallback([this]() { refreshAnnotationLists(); });
   canvas_->setStatusCallback([this](const QString& text) { notify(text, 1500); });
@@ -346,22 +392,32 @@ void MainWindow::buildUi() {
     }
     status_position_->setText(QStringLiteral("X %1  Y %2").arg(point.x()).arg(point.y()));
   });
+  centre_layout->addWidget(canvas_, 1);
 
-  auto* right = buildFactsPanel(splitter);
-
-  right->setMinimumWidth(262);
+  // ---- right: inspector dock ----------------------------------------------
+  auto* right = buildFactsPanel(horizontal);
+  right->setMinimumWidth(250);
   right->setMaximumWidth(300);
-  left->setMinimumWidth(304);
+  left->setMinimumWidth(290);
   left->setMaximumWidth(360);
-  splitter->addWidget(left);
-  splitter->addWidget(canvas_);
-  splitter->addWidget(right);
-  splitter->setStretchFactor(0, 0);
-  splitter->setStretchFactor(1, 1);
-  splitter->setStretchFactor(2, 0);
-  splitter->setSizes({330, 840, 270});
 
-  outer->addWidget(splitter, 1);
+  horizontal->addWidget(left);
+  horizontal->addWidget(centre);
+  horizontal->addWidget(right);
+  horizontal->setStretchFactor(0, 0);
+  horizontal->setStretchFactor(1, 1);
+  horizontal->setStretchFactor(2, 0);
+  horizontal->setSizes({310, 900, 270});
+
+  body->addWidget(horizontal);
+  output_dock_ = buildOutputDock(body);
+  output_dock_->setMinimumHeight(30);
+  output_dock_->setMaximumHeight(132);
+  body->addWidget(output_dock_);
+  body->setStretchFactor(0, 1);
+  body->setStretchFactor(1, 0);
+
+  outer->addWidget(body, 1);
   setCentralWidget(central);
 
   // ---- status bar ---------------------------------------------------------
@@ -394,9 +450,6 @@ void MainWindow::buildUi() {
   };
 
   statusBar()->addWidget(status_file_);
-  auto* status_gap = new QWidget(this);
-  status_gap->setFixedWidth(12);
-  statusBar()->addWidget(status_gap);
   statusBar()->addWidget(status_message_, 1);
   statusBar()->addWidget(progress_);
   statusBar()->addPermanentWidget(status_position_);
@@ -407,83 +460,113 @@ void MainWindow::buildUi() {
   statusBar()->addPermanentWidget(separator());
   statusBar()->addPermanentWidget(status_size_);
   statusBar()->setContentsMargins(8, 0, 12, 0);
+
+  if (output_log_ != nullptr && output_log_->count() == 1) {
+    delete output_log_->takeItem(0);
+  }
+  notify(tr("figtools %1 已就绪").arg(FIGTOOLS_VERSION), 100);
+  notify(tr("处理链 %1 步 · 算子注册表 %2 个")
+             .arg(recipe_.steps.size())
+             .arg(Registry::instance().all().size()), 100);
 }
 
 void MainWindow::buildTopBar(QVBoxLayout* outer) {
   auto* bar = new QWidget(this);
-  bar->setObjectName(QStringLiteral("TopBar"));
-  bar->setFixedHeight(46);
+  bar->setObjectName(QStringLiteral("QuickBar"));
+  bar->setFixedHeight(38);
   auto* layout = new QHBoxLayout(bar);
-  layout->setContentsMargins(14, 0, 14, 0);
-  layout->setSpacing(6);
+  layout->setContentsMargins(12, 0, 12, 0);
+  layout->setSpacing(5);
 
   auto* mark = new QLabel(bar);
-  mark->setFixedSize(7, 7);
-  mark->setStyleSheet(QStringLiteral("background:%1; border-radius:3px;").arg(theme::kAccent));
-
+  mark->setFixedSize(8, 8);
+  mark->setStyleSheet(QStringLiteral("background:%1; border-radius:2px;").arg(theme::kAccent));
   auto* brand = new QLabel(QStringLiteral("figtools"), bar);
   brand->setObjectName(QStringLiteral("Brand"));
   brand->setFont(theme::ui_font(13, QFont::DemiBold));
   auto* brand_sub = new QLabel(tr("图像工作台"), bar);
   brand_sub->setObjectName(QStringLiteral("BrandSub"));
-  brand_sub->setFont(theme::ui_font(11));
-
+  brand_sub->setFont(theme::ui_font(10));
   layout->addWidget(mark);
-  layout->addSpacing(2);
+  layout->addSpacing(3);
   layout->addWidget(brand);
-  layout->addSpacing(6);
   layout->addWidget(brand_sub);
   layout->addSpacing(10);
   layout->addWidget(vertical_rule(bar));
 
-  auto* open_button = new QToolButton(bar);
-  open_button->setDefaultAction(open_action_);
-  open_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-  open_button->setIcon(theme::icon(theme::Glyph::kOpen));
-  open_button->setCursor(Qt::PointingHandCursor);
-
-  auto* sample_button = new QToolButton(bar);
-  sample_button->setDefaultAction(sample_action_);
-  sample_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-  sample_button->setIcon(theme::icon(theme::Glyph::kSample));
-  sample_button->setCursor(Qt::PointingHandCursor);
-
-  auto* export_button = new QToolButton(bar);
-  export_button->setDefaultAction(export_action_);
-  export_button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-  export_button->setIcon(theme::icon(theme::Glyph::kExport));
-  export_button->setCursor(Qt::PointingHandCursor);
-
-  layout->addSpacing(4);
-  layout->addWidget(open_button);
-  layout->addWidget(sample_button);
-  layout->addSpacing(2);
+  const auto quick = [bar, layout](QAction* action, theme::Glyph glyph) {
+    auto* button = new QToolButton(bar);
+    button->setDefaultAction(action);
+    button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    button->setIcon(theme::icon(glyph));
+    button->setFont(theme::ui_font(10));
+    layout->addWidget(button);
+    return button;
+  };
+  quick(open_action_, theme::Glyph::kOpen);
+  quick(sample_action_, theme::Glyph::kSample);
+  quick(export_action_, theme::Glyph::kExport);
   layout->addWidget(vertical_rule(bar));
-  layout->addWidget(export_button);
 
   undo_button_ = new QToolButton(bar);
   undo_button_->setIcon(theme::icon(theme::Glyph::kUndo));
   undo_button_->setToolTip(tr("撤销 (Ctrl+Z)"));
-  undo_button_->setCursor(Qt::PointingHandCursor);
   connect(undo_button_, &QToolButton::clicked, this, &MainWindow::undoRecipe);
-
   redo_button_ = new QToolButton(bar);
   redo_button_->setIcon(theme::icon(theme::Glyph::kRedo));
   redo_button_->setToolTip(tr("重做 (Ctrl+Y)"));
-  redo_button_->setCursor(Qt::PointingHandCursor);
   connect(redo_button_, &QToolButton::clicked, this, &MainWindow::redoRecipe);
-
-  layout->addSpacing(2);
   layout->addWidget(undo_button_);
   layout->addWidget(redo_button_);
   layout->addStretch(1);
 
-  // Compare mode: one segmented control, always visible, one click away.
+  auto* meta = new QLabel(tr("图像全流程工作台"), bar);
+  meta->setObjectName(QStringLiteral("TopMeta"));
+  layout->addWidget(meta);
+  outer->addWidget(bar);
+}
+
+void MainWindow::buildRibbon(QVBoxLayout* outer) {
+  auto* ribbon = new QWidget(this);
+  ribbon->setObjectName(QStringLiteral("Ribbon"));
+  auto* layout = new QVBoxLayout(ribbon);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(0);
+
+  auto* tabs = new QTabWidget(ribbon);
+  tabs->setObjectName(QStringLiteral("RibbonTabs"));
+  tabs->tabBar()->setObjectName(QStringLiteral("RibbonBar"));
+  tabs->setMaximumHeight(106);
+  const char* names[] = {"开始", "处理", "标注", "数据集", "模型", "视图"};
+  for (int i = 0; i < 6; ++i) {
+    tabs->addTab(buildRibbonPage(i), tr(names[i]));
+  }
+  connect(tabs, &QTabWidget::currentChanged, this, [this](int index) {
+    if (index >= 0 && index <= 2 && tabs_ != nullptr) {
+      tabs_->setCurrentIndex(index);
+    }
+  });
+  layout->addWidget(tabs);
+  outer->addWidget(ribbon);
+}
+
+QWidget* MainWindow::buildViewToolbar(QWidget* parent) {
+  auto* bar = new QWidget(parent);
+  bar->setObjectName(QStringLiteral("QuickBar"));
+  bar->setFixedHeight(32);
+  auto* layout = new QHBoxLayout(bar);
+  layout->setContentsMargins(8, 0, 8, 0);
+  layout->setSpacing(4);
+
+  auto* label = new QLabel(tr("视图"), bar);
+  label->setObjectName(QStringLiteral("Meta"));
+  layout->addWidget(label);
+  layout->addSpacing(4);
+
   QHBoxLayout* mode_layout = nullptr;
   auto* mode_frame = segmented(bar, &mode_layout);
-  auto* mode_group = new QButtonGroup(mode_frame);
-  mode_group->setExclusive(true);
-
+  mode_group_ = new QButtonGroup(mode_frame);
+  mode_group_->setExclusive(true);
   const struct {
     const char* label;
     ImageCanvas::Mode mode;
@@ -497,50 +580,204 @@ void MainWindow::buildTopBar(QVBoxLayout* outer) {
     button->setText(tr(entry.label));
     button->setCheckable(true);
     button->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    button->setCursor(Qt::PointingHandCursor);
-    button->setFont(theme::ui_font(11));
-    button->setMinimumWidth(46);
-    button->setProperty("mode", static_cast<int>(entry.mode));
+    button->setFont(theme::ui_font(10));
+    button->setMinimumWidth(42);
     mode_layout->addWidget(button);
-    mode_group->addButton(button, static_cast<int>(entry.mode));
+    mode_group_->addButton(button, static_cast<int>(entry.mode));
   }
-  if (auto* first = mode_group->button(static_cast<int>(ImageCanvas::Mode::kSplit))) {
+  if (auto* first = mode_group_->button(static_cast<int>(ImageCanvas::Mode::kSplit))) {
     first->setChecked(true);
   }
-  connect(mode_group, &QButtonGroup::idClicked, this, [this](int id) { setCompareMode(id); });
-
+  connect(mode_group_, &QButtonGroup::idClicked, this, &MainWindow::setCompareMode);
   layout->addWidget(mode_frame);
-  layout->addSpacing(6);
-  layout->addWidget(vertical_rule(bar));
+  layout->addSpacing(8);
 
-  auto* fit_button = new QToolButton(bar);
-  fit_button->setText(tr("适应"));
-  fit_button->setToolButtonStyle(Qt::ToolButtonTextOnly);
-  fit_button->setFont(theme::ui_font(11));
-  fit_button->setToolTip(tr("适应窗口 (F)"));
-  fit_button->setCursor(Qt::PointingHandCursor);
-  connect(fit_button, &QToolButton::clicked, this, [this]() {
+  const auto tool_button = [this, bar, layout](const QString& text, const QString& tip, auto slot) {
+    auto* button = new QToolButton(bar);
+    button->setText(text);
+    button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    button->setToolTip(tip);
+    button->setFont(theme::ui_font(10));
+    connect(button, &QToolButton::clicked, this, [this, slot]() { slot(); });
+    layout->addWidget(button);
+  };
+  tool_button(tr("适应"), tr("适应窗口 (F)"), [this]() {
     if (canvas_ != nullptr) {
       canvas_->fitToWindow();
     }
   });
-
-  auto* actual_button = new QToolButton(bar);
-  actual_button->setText(QStringLiteral("1:1"));
-  actual_button->setToolButtonStyle(Qt::ToolButtonTextOnly);
-  actual_button->setFont(theme::mono_font(11));
-  actual_button->setToolTip(tr("实际像素 (1)"));
-  actual_button->setCursor(Qt::PointingHandCursor);
-  connect(actual_button, &QToolButton::clicked, this, [this]() {
+  tool_button(QStringLiteral("1:1"), tr("实际像素 (1)"), [this]() {
     if (canvas_ != nullptr) {
       canvas_->zoomToActualSize();
     }
   });
+  layout->addStretch(1);
+  return bar;
+}
 
-  layout->addWidget(fit_button);
-  layout->addWidget(actual_button);
+QWidget* MainWindow::buildOutputDock(QWidget* parent) {
+  auto* dock = new QFrame(parent);
+  dock->setObjectName(QStringLiteral("PanelBottom"));
+  auto* layout = new QVBoxLayout(dock);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(0);
+  layout->addWidget(theme::dock_title(tr("输出"), dock));
+  output_log_ = new QListWidget(dock);
+  output_log_->setFont(theme::mono_font(10));
+  output_log_->setSelectionMode(QAbstractItemView::NoSelection);
+  output_log_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  output_log_->addItem(tr("就绪。"));
+  output_log_->item(0)->setForeground(theme::colour(theme::kTextFaint));
+  layout->addWidget(output_log_, 1);
+  return dock;
+}
 
-  outer->addWidget(bar);
+void MainWindow::setLeftPage(int index) {
+  if (tabs_ != nullptr && index >= 0 && index < tabs_->count()) {
+    tabs_->setCurrentIndex(index);
+  }
+}
+
+QWidget* MainWindow::buildRibbonPage(int page_index) {
+  auto* page = new QWidget(this);
+  page->setObjectName(QStringLiteral("RibbonPage"));
+  auto* layout = new QHBoxLayout(page);
+  layout->setContentsMargins(10, 7, 10, 7);
+  layout->setSpacing(0);
+
+  struct RibbonCommand {
+    const char* label;
+    theme::Glyph glyph;
+    bool enabled;
+    std::function<void()> action;
+  };
+  struct RibbonGroup {
+    const char* name;
+    std::vector<RibbonCommand> commands;
+  };
+
+  std::vector<RibbonGroup> groups;
+  if (page_index == 0) {  // 开始
+    groups = {
+        {QT_TR_NOOP("文件"), {
+            {QT_TR_NOOP("打开"), theme::Glyph::kOpen, true,
+             [this]() { open_action_->trigger(); }},
+            {QT_TR_NOOP("示例"), theme::Glyph::kSample, true,
+             [this]() { sample_action_->trigger(); }},
+            {QT_TR_NOOP("导出"), theme::Glyph::kExport, true,
+             [this]() { export_action_->trigger(); }},
+        }},
+        {QT_TR_NOOP("编辑"), {
+            {QT_TR_NOOP("撤销"), theme::Glyph::kUndo, false, [this]() { undoRecipe(); }},
+            {QT_TR_NOOP("重做"), theme::Glyph::kRedo, false, [this]() { redoRecipe(); }},
+        }},
+        {QT_TR_NOOP("批处理"), {
+            {QT_TR_NOOP("批量处理"), theme::Glyph::kBatch, true,
+             [this]() { openBatchDialog(); }},
+        }},
+    };
+  } else if (page_index == 1) {  // 处理
+    groups = {
+        {QT_TR_NOOP("配方"), {
+            {QT_TR_NOOP("保存"), theme::Glyph::kSave, true, [this]() { saveRecipe(); }},
+            {QT_TR_NOOP("载入"), theme::Glyph::kOpen, true, [this]() { loadRecipe(); }},
+            {QT_TR_NOOP("批量"), theme::Glyph::kBatch, true, [this]() { openBatchDialog(); }},
+        }},
+        {QT_TR_NOOP("算子"), {
+            {QT_TR_NOOP("添加"), theme::Glyph::kPlus, true,
+             [this]() { setLeftPage(0); }},
+        }},
+    };
+  } else if (page_index == 2) {  // 标注
+    groups = {
+        {QT_TR_NOOP("标注"), {
+            {QT_TR_NOOP("矩形"), theme::Glyph::kAnnotate, true, [this]() { setLeftPage(1); }},
+            {QT_TR_NOOP("多边形"), theme::Glyph::kAnnotate, true, [this]() { setLeftPage(1); }},
+        }},
+        {QT_TR_NOOP("导出"), {
+            {QT_TR_NOOP("COCO"), theme::Glyph::kExport, true,
+             [this]() { exportAnnotations(true); }},
+            {QT_TR_NOOP("YOLO"), theme::Glyph::kExport, true,
+             [this]() { exportAnnotations(false); }},
+        }},
+    };
+  } else if (page_index == 3) {  // 数据集
+    groups = {
+        {QT_TR_NOOP("数据集"), {
+            {QT_TR_NOOP("选择目录"), theme::Glyph::kFolder, true,
+             [this]() { chooseDatasetDirectory(); }},
+            {QT_TR_NOOP("划分"), theme::Glyph::kDataset, true, [this]() { splitDataset(); }},
+            {QT_TR_NOOP("导出快照"), theme::Glyph::kExport, true, [this]() { exportDataset(); }},
+        }},
+    };
+  } else if (page_index == 4) {  // 模型
+    groups = {
+        {QT_TR_NOOP("训练"), {
+            {QT_TR_NOOP("训练模型"), theme::Glyph::kTrain, true, [this]() { openTrainDialog(); }},
+            {QT_TR_NOOP("载入模型"), theme::Glyph::kModel, true, [this]() { chooseModel(); }},
+        }},
+        {QT_TR_NOOP("推理"), {
+            {QT_TR_NOOP("分类"), theme::Glyph::kPlay, true, [this]() { runInference(); }},
+            {QT_TR_NOOP("检测"), theme::Glyph::kDetect, true, [this]() { runDetection(); }},
+            {QT_TR_NOOP("批量"), theme::Glyph::kBatch, true, [this]() { openBatchInferDialog(); }},
+        }},
+    };
+  } else {  // 视图
+    groups = {
+        {QT_TR_NOOP("显示"), {
+            {QT_TR_NOOP("适应窗口"), theme::Glyph::kFit, true, [this]() {
+               if (canvas_ != nullptr) { canvas_->fitToWindow(); }
+             }},
+            {QT_TR_NOOP("实际像素"), theme::Glyph::kActual, true, [this]() {
+               if (canvas_ != nullptr) { canvas_->zoomToActualSize(); }
+             }},
+        }},
+    };
+  }
+
+  for (std::size_t g = 0; g < groups.size(); ++g) {
+    auto* group = new QFrame(page);
+    group->setObjectName(QStringLiteral("RibbonGroup"));
+    auto* group_layout = new QVBoxLayout(group);
+    group_layout->setContentsMargins(0, 0, 16, 0);
+    group_layout->setSpacing(3);
+
+    auto* button_row = new QHBoxLayout();
+    button_row->setSpacing(2);
+    for (const auto& command : groups[g].commands) {
+      auto* button = new QToolButton(group);
+      button->setObjectName(QStringLiteral("RibbonLarge"));
+      button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+      button->setIcon(theme::icon(command.glyph, theme::colour(theme::kTextDim), 24));
+      button->setIconSize(QSize(24, 24));
+      button->setMinimumWidth(60);
+      button->setMinimumHeight(52);
+      button->setText(tr(command.label));
+      button->setFont(theme::ui_font(10));
+      button->setToolTip(tr(command.label));
+      button->setCursor(Qt::PointingHandCursor);
+      connect(button, &QToolButton::clicked, this, command.action);
+      button_row->addWidget(button);
+    }
+    group_layout->addLayout(button_row, 1);
+    auto* caption = new QLabel(tr(groups[g].name), group);
+    caption->setObjectName(QStringLiteral("RibbonGroupTitle"));
+    caption->setAlignment(Qt::AlignCenter);
+    group_layout->addWidget(caption);
+    layout->addWidget(group);
+
+    if (g + 1 < groups.size()) {
+      auto* rule = new QFrame(page);
+      rule->setFixedWidth(1);
+      rule->setFixedHeight(52);
+      rule->setStyleSheet(QStringLiteral("background:%1;").arg(theme::kLine));
+      layout->addSpacing(8);
+      layout->addWidget(rule);
+      layout->addSpacing(8);
+    }
+  }
+  layout->addStretch(1);
+  return page;
 }
 
 void MainWindow::openBatchDialog(const QString& suggested_input) {
@@ -894,6 +1131,7 @@ QWidget* MainWindow::buildFactsPanel(QWidget* parent) {
   auto* panel = new QFrame(parent);
   panel->setObjectName(QStringLiteral("PanelRight"));
   auto* layout = new QVBoxLayout(panel);
+  layout->addWidget(theme::dock_title(tr("属性检查器"), panel));
   layout->setContentsMargins(14, 13, 14, 14);
   layout->setSpacing(8);
 
@@ -1377,6 +1615,18 @@ void MainWindow::notify(const QString& text, int timeout_ms) {
   status_message_->setText(text);
   if (message_timer_ != nullptr) {
     message_timer_->start(std::max(500, timeout_ms));
+  }
+  // Mirror meaningful messages into the output dock. A professional workbench
+  // keeps a durable record even after the status bar message expires.
+  if (output_log_ != nullptr && !text.isEmpty()) {
+    const QString stamp = QTime::currentTime().toString(QStringLiteral("HH:mm:ss"));
+    auto* item = new QListWidgetItem(QStringLiteral("%1  %2").arg(stamp, text));
+    item->setForeground(theme::colour(theme::kTextDim));
+    output_log_->addItem(item);
+    while (output_log_->count() > 200) {
+      delete output_log_->takeItem(0);
+    }
+    output_log_->scrollToBottom();
   }
 }
 
@@ -1948,7 +2198,8 @@ void MainWindow::refreshModelPanel() {
           : QStringLiteral("—");
   model_list_->set_rows({
       {tr("模型"), QFileInfo(model_dir_).fileName()},
-      {tr("类型"), model_kind_ == QLatin1String("detector") ? tr("检测") : tr("分类")},
+      {tr("类型"), model_kind_ == QLatin1String("yolo") ? tr("YOLO 检测")
+                   : (model_kind_ == QLatin1String("detector") ? tr("检测") : tr("分类"))},
       {tr("架构"), QStringLiteral("%1 · %2 px").arg(model_arch_).arg(model_input_)},
       {tr("类别"), QString::number(model_classes_)},
       {tr("验证"), model_val_ >= 0.0 ? QString::number(model_val_, 'f', 3) : QStringLiteral("—")},
@@ -1963,9 +2214,10 @@ void MainWindow::runDetection() {
     notify(tr("没有可检测的图像"), 3000);
     return;
   }
-  if (model_kind_ != QLatin1String("detector")) {
+  const bool yolo = model_kind_ == QLatin1String("yolo");
+  if (!yolo && model_kind_ != QLatin1String("detector")) {
     QMessageBox::information(this, tr("模型类型不符"),
-                             tr("当前模型是分类器。请用「训练模型 → 目标检测」训练检测模型，"
+                             tr("当前模型是分类器。请用「训练模型 → YOLO 目标检测」训练检测模型，"
                                 "或载入一个检测模型包。"));
     return;
   }
@@ -1990,10 +2242,18 @@ void MainWindow::runDetection() {
   QProcess process;
   process.setWorkingDirectory(scripts);
   process.setProcessChannelMode(QProcess::SeparateChannels);
-  process.start(python,
-                {QStringLiteral("detect.py"), QStringLiteral("--model"), model_dir_,
-                 QStringLiteral("--image"), image_path, QStringLiteral("--threshold"),
-                 QStringLiteral("0.5"), QStringLiteral("--nms"), QStringLiteral("0.4")});
+  const QString script = yolo ? QStringLiteral("detect_yolo.py") : QStringLiteral("detect.py");
+  QStringList arguments;
+  arguments << script << QStringLiteral("--model") << model_dir_
+            << QStringLiteral("--image") << image_path;
+  if (yolo) {
+    arguments << QStringLiteral("--conf") << QStringLiteral("0.25")
+              << QStringLiteral("--iou") << QStringLiteral("0.45");
+  } else {
+    arguments << QStringLiteral("--threshold") << QStringLiteral("0.5")
+              << QStringLiteral("--nms") << QStringLiteral("0.4");
+  }
+  process.start(python, arguments);
   const bool started = process.waitForStarted(5000);
   const bool finished = started && process.waitForFinished(180000);
   setBusy(false);
@@ -2050,7 +2310,7 @@ void MainWindow::runDetection() {
 }
 
 void MainWindow::runInference() {
-  if (model_kind_ == QLatin1String("detector")) {
+  if (model_kind_ == QLatin1String("detector") || model_kind_ == QLatin1String("yolo")) {
     runDetection();
     return;
   }

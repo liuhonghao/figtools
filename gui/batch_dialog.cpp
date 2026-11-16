@@ -30,6 +30,7 @@
 #include <utility>
 
 #include "theme.hpp"
+#include "widgets.hpp"
 
 namespace figtools::gui {
 namespace {
@@ -162,6 +163,7 @@ void BatchDialog::buildUi(const QString& suggested_input) {
   status_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   root->addWidget(status_label_);
 
+  root->addWidget(theme::dock_title(tr("运行日志"), this));
   log_ = new QListWidget(this);
   log_->setFont(theme::ui_font(11));
   log_->setSelectionMode(QAbstractItemView::NoSelection);

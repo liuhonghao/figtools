@@ -1,3 +1,9 @@
+# Base worker: classification + patch detector (BSD/Apache/MIT licensed).
 torch>=2.0
 torchvision>=0.15
 Pillow>=9.0
+
+# Optional: YOLO training/detection. Install SEPARATELY, only on machines that
+# need it. Ultralytics is AGPL-3.0 and is never bundled into the C++ app.
+#   pip install ultralytics>=8.4
+# ultralytics>=8.4

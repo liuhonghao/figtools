@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QDir>
 #include <QMenu>
+#include <QTabWidget>
 #include <QPushButton>
 #include <QTimer>
 #include <QToolButton>
@@ -13,7 +14,7 @@
 #include "theme.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.0.0"
+#define FIGTOOLS_VERSION "1.1.0"
 #endif
 
 int main(int argc, char** argv) {
@@ -140,6 +141,17 @@ int main(int argc, char** argv) {
         }
       });
     }
+  }
+
+  const int ribbon_index = arguments.indexOf(QStringLiteral("--ribbon"));
+  if (ribbon_index >= 0 && ribbon_index + 1 < arguments.size()) {
+    const int page = arguments.at(ribbon_index + 1).toInt();
+    QTimer::singleShot(300, &window, [&window, page]() {
+      auto* tabs = window.findChild<QTabWidget*>("RibbonTabs");
+      if (tabs != nullptr && page >= 0 && page < tabs->count()) {
+        tabs->setCurrentIndex(page);
+      }
+    });
   }
 
   const int index = arguments.indexOf(QStringLiteral("--screenshot"));

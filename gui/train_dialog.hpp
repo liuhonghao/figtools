@@ -53,6 +53,7 @@ class TrainDialog : public QDialog {
   void handleEvent(const QString& line);
   void appendLog(const QString& text, const QColor& colour);
   void setRunning(bool running);
+  [[nodiscard]] QString taskKind() const;
   [[nodiscard]] bool isDetection() const;
   void applyTaskDefaults();
   void updateDefaultsForData();

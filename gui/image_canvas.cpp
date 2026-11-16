@@ -415,7 +415,7 @@ void ImageCanvas::paintEvent(QPaintEvent* event) {
   painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
   QLinearGradient backdrop(0, 0, 0, static_cast<qreal>(height()));
-  backdrop.setColorAt(0.0, theme::colour("#F2ECDF"));
+  backdrop.setColorAt(0.0, theme::colour("#3A3E39"));
   backdrop.setColorAt(1.0, theme::colour(theme::kCanvas));
   painter.fillRect(rect(), backdrop);
 

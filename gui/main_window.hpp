@@ -24,12 +24,14 @@
 
 class QAction;
 class QAbstractButton;
+class QButtonGroup;
 class QDoubleSpinBox;
 class QHBoxLayout;
 class QLabel;
 class QListWidget;
 class QProgressBar;
 class QSpinBox;
+class QStackedWidget;
 class QTabWidget;
 class QToolButton;
 class QVBoxLayout;
@@ -73,6 +75,11 @@ class MainWindow : public QMainWindow {
   void buildActions();
   void buildUi();
   void buildTopBar(QVBoxLayout* outer);
+  void buildRibbon(QVBoxLayout* outer);
+  QWidget* buildRibbonPage(int page_index);
+  QWidget* buildViewToolbar(QWidget* parent);
+  QWidget* buildOutputDock(QWidget* parent);
+  void setLeftPage(int index);
   QWidget* buildChainPage(QWidget* parent);
   QWidget* buildAnnotatePage(QWidget* parent);
   QWidget* buildDatasetPage(QWidget* parent);
@@ -164,6 +171,10 @@ class MainWindow : public QMainWindow {
   QAction* redo_action_ = nullptr;
   QToolButton* undo_button_ = nullptr;
   QToolButton* redo_button_ = nullptr;
+  QButtonGroup* mode_group_ = nullptr;
+  QStackedWidget* ribbon_stack_ = nullptr;
+  QWidget* output_dock_ = nullptr;
+  QListWidget* output_log_ = nullptr;
   QString last_open_dir_;
   QString model_dir_;
   QString model_arch_;

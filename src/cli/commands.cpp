@@ -4,7 +4,7 @@
 #include "cli/commands.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.0.0"
+#define FIGTOOLS_VERSION "1.1.0"
 #endif
 
 #include <cmath>
