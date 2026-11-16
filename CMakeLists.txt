@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(figtools
-  VERSION 0.5.0
+  VERSION 0.6.0
   DESCRIPTION "Image processing workbench: deterministic pipelines, operator registry, CLI"
   HOMEPAGE_URL "https://github.com/liuhonghao/figtools"
   LANGUAGES CXX
@@ -128,6 +128,19 @@ target_link_libraries(figtools PRIVATE ft_pipeline figtools::warnings)
 target_compile_definitions(figtools PRIVATE FIGTOOLS_VERSION="${PROJECT_VERSION}")
 
 # ---------------------------------------------------------------------------
+# ft_batch -- run a recipe over a directory
+# ---------------------------------------------------------------------------
+add_library(ft_batch STATIC
+  src/batch/batch.cpp
+)
+target_include_directories(ft_batch PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(ft_batch PUBLIC ft_core ft_io ft_pipeline PRIVATE figtools::warnings)
+add_library(figtools::batch ALIAS ft_batch)
+
+# ---------------------------------------------------------------------------
 # Desktop shell (optional)
 # ---------------------------------------------------------------------------
 if(FIGTOOLS_BUILD_GUI)
@@ -144,10 +157,12 @@ if(FIGTOOLS_BUILD_GUI)
     gui/theme.hpp
     gui/widgets.cpp
     gui/widgets.hpp
+    gui/batch_dialog.cpp
+    gui/batch_dialog.hpp
   )
   target_include_directories(figtools_gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gui)
   target_compile_definitions(figtools_gui PRIVATE FIGTOOLS_VERSION="${PROJECT_VERSION}")
-  target_link_libraries(figtools_gui PRIVATE ft_pipeline ft_annotate ft_dataset Qt6::Widgets figtools::warnings)
+  target_link_libraries(figtools_gui PRIVATE ft_pipeline ft_annotate ft_dataset ft_batch Qt6::Widgets figtools::warnings)
   set_target_properties(figtools_gui PROPERTIES AUTOMOC ON)
   install(TARGETS figtools_gui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
@@ -165,8 +180,9 @@ if(FIGTOOLS_BUILD_TESTS)
     tests/test_pipeline.cpp
     tests/test_annotate.cpp
     tests/test_dataset.cpp
+    tests/test_batch.cpp
   )
-  target_link_libraries(ft_tests PRIVATE ft_pipeline ft_annotate ft_dataset figtools::warnings)
+  target_link_libraries(ft_tests PRIVATE ft_pipeline ft_annotate ft_dataset ft_batch figtools::warnings)
   target_include_directories(ft_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
   add_test(NAME unit COMMAND ft_tests)
 endif()

@@ -4,7 +4,7 @@
 #include "cli/commands.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "0.1.0"
+#define FIGTOOLS_VERSION "0.6.0"
 #endif
 
 #include <cmath>
@@ -21,12 +21,28 @@
 #include "figtools/core/sample_scene.hpp"
 #include "figtools/io/image_io.hpp"
 #include "figtools/ops/registry.hpp"
+#include "figtools/batch/batch.hpp"
 #include "figtools/pipeline/executor.hpp"
 #include "figtools/json/json.hpp"
 #include "figtools/pipeline/recipe.hpp"
 
 namespace figtools::cli {
 namespace {
+
+Result<Recipe> read_recipe_file(const std::string& path) {
+  std::FILE* file = std::fopen(path.c_str(), "rb");
+  if (file == nullptr) {
+    return Result<Recipe>::fail(ErrorCode::kIoError, "cannot open recipe: " + path);
+  }
+  std::string text;
+  char buffer[4096];
+  std::size_t read = 0;
+  while ((read = std::fread(buffer, 1, sizeof(buffer), file)) > 0) {
+    text.append(buffer, read);
+  }
+  std::fclose(file);
+  return Recipe::from_json(text);
+}
 
 std::string human_bytes(std::uint64_t bytes) {
   const char* units[] = {"B", "KB", "MB", "GB"};
@@ -126,6 +142,9 @@ void print_usage() {
       "        [--trace]                       Print per-step timing\n"
       "  compare -a <before> -b <after>        PSNR / SSIM / MAE report\n"
       "        [--json]\n"
+      "  batch <in-dir> <out-dir> -r <recipe>  Apply a recipe to every image in a folder\n"
+      "        [--suffix _out] [--format png|bmp|ppm]\n"
+      "        [--recursive] [--overwrite] [--json]\n"
       "  demo -o <dir> [--size WxH] [--seed N] Generate a sample scene and run a pipeline\n"
       "  version                               Print version\n"
       "  help                                  Show this message\n"
@@ -333,6 +352,92 @@ int command_compare(const std::string& lhs_path, const std::string& rhs_path, bo
   std::printf("compare   : %s  vs  %s\n", lhs_path.c_str(), rhs_path.c_str());
   print_metrics(metrics.value());
   return 0;
+}
+
+int command_batch(const std::string& input_dir, const std::string& output_dir,
+                  const std::string& recipe_path, const std::string& suffix,
+                  const std::string& format, bool recursive, bool overwrite, bool as_json) {
+  auto recipe = read_recipe_file(recipe_path);
+  if (!recipe) {
+    std::fprintf(stderr, "error: %s\n", recipe.error().message.c_str());
+    return 1;
+  }
+
+  BatchOptions options;
+  options.input_dir = input_dir;
+  options.output_dir = output_dir;
+  options.suffix = suffix;
+  options.recursive = recursive;
+  options.overwrite = overwrite;
+  if (format == "bmp") {
+    options.format = OutputFormat::kBmp;
+  } else if (format == "ppm") {
+    options.format = OutputFormat::kPpm;
+  } else if (format.empty() || format == "png") {
+    options.format = OutputFormat::kPng;
+  } else {
+    std::fprintf(stderr, "error: unknown format '%s' (png, bmp, ppm)\n", format.c_str());
+    return 1;
+  }
+
+  BatchSummary summary;
+  if (!as_json) {
+    std::printf("batch     : %s -> %s\n", input_dir.c_str(), output_dir.c_str());
+    std::printf("format    : %s  suffix '%s'  %s%s\n", to_string(options.format),
+                options.suffix.c_str(), recursive ? "recursive" : "flat",
+                overwrite ? "  overwrite" : "");
+  }
+
+  std::size_t printed = 0;
+  const auto status = run_batch(
+      recipe.value(), options, {},
+      [&printed, as_json](const BatchProgress& progress) {
+        if (as_json || progress.phase != "done") {
+          return;
+        }
+        ++printed;
+        std::printf("[%zu/%zu] %s\n", progress.done, progress.total,
+                    progress.current_input.c_str());
+        std::fflush(stdout);
+      },
+      &summary);
+
+  if (!status) {
+    std::fprintf(stderr, "error: %s\n", status.error().message.c_str());
+    return 1;
+  }
+
+  if (as_json) {
+    std::printf("{\n  \"total\": %zu,\n  \"succeeded\": %zu,\n  \"failed\": %zu,\n"
+                "  \"skipped\": %zu,\n  \"cancelled\": %s,\n  \"milliseconds\": %.1f,\n"
+                "  \"items\": [\n",
+                summary.total, summary.succeeded, summary.failed, summary.skipped,
+                summary.cancelled ? "true" : "false", summary.milliseconds);
+    for (std::size_t i = 0; i < summary.items.size(); ++i) {
+      const BatchItemResult& item = summary.items[i];
+      std::printf("    {\"input\": \"%s\", \"output\": \"%s\", \"status\": \"%s\", "
+                  "\"ms\": %.1f%s}\n%s",
+                  item.input_path.c_str(), item.output_path.c_str(),
+                  item.ok ? "ok" : (item.skipped ? "skipped" : "failed"), item.milliseconds,
+                  item.error.empty() ? "" : (", \"error\": \"" + item.error + "\"").c_str(),
+                  i + 1 == summary.items.size() ? "" : ",");
+    }
+    std::printf("  ]\n}\n");
+    return summary.failed == 0 ? 0 : 1;
+  }
+
+  for (const BatchItemResult& item : summary.items) {
+    if (!item.ok && !item.skipped) {
+      std::fprintf(stderr, "failed    : %s -- %s\n", item.input_path.c_str(),
+                   item.error.c_str());
+    }
+  }
+  std::printf("total     : %zu\n", summary.total);
+  std::printf("succeeded : %zu\n", summary.succeeded);
+  std::printf("skipped   : %zu\n", summary.skipped);
+  std::printf("failed    : %zu\n", summary.failed);
+  std::printf("elapsed   : %.1f ms\n", summary.milliseconds);
+  return summary.failed == 0 ? 0 : 1;
 }
 
 int command_demo(const std::string& output_dir, int width, int height, unsigned seed) {

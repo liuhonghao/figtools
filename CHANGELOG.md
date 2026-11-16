@@ -3,6 +3,26 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.6.0] - 2026-11-16
+
+### Added
+
+- **ft_batch**：`list_images()` 按扩展名收集并排序；`run_batch()` 串行套用配方，
+  逐文件记录耗时与错误；`batch_output_path()` 保留子目录结构。
+  取消在文件之间轮询，进行中的文件一定会写完，不会留下半个输出。
+- **CLI `batch`**：`batch <in-dir> <out-dir> -r <recipe> [--suffix] [--format]
+  [--recursive] [--overwrite] [--json]`，失败文件单独列出且不影响其余文件，
+  有失败时退出码为 1。
+- **批量处理对话框**（`Ctrl+B`）：输入/输出目录、后缀、格式、递归、覆盖；
+  实时匹配计数、进度条、逐文件日志、取消与“打开输出目录”。
+  工作在 `std::thread` 上，UI 通过队列调用接收进度，不阻塞重绘。
+- **窗口状态**：`QSettings` 记住窗口几何与上一次打开目录。
+- 8 项批量测试：排序、递归、跳过、覆盖、取消、进度单调、输出与单张执行逐字节一致。
+
+### Changed
+
+- `apply` 与 `batch` 共用同一个配方读取函数，去掉重复的文件读取逻辑。
+
 ## [0.5.0] - 2026-11-16
 
 ### Changed

@@ -30,7 +30,8 @@ struct Arguments {
   }
 };
 
-const std::vector<std::string> kBooleanFlags = {"trace", "json", "help", "version"};
+const std::vector<std::string> kBooleanFlags = {"trace", "json",       "help",
+                                                 "version", "recursive", "overwrite"};
 
 Arguments parse_arguments(int argc, char** argv) {
   Arguments arguments;
@@ -113,6 +114,22 @@ int main(int argc, char** argv) {
       return 1;
     }
     return figtools::cli::command_compare(lhs, rhs, arguments.has_flag("json"));
+  }
+  if (command == "batch") {
+    if (arguments.positional.size() < 2) {
+      std::fprintf(stderr, "error: batch requires <input-dir> <output-dir> -r <recipe>\n");
+      return 1;
+    }
+    const std::string recipe = arguments.option("r");
+    if (recipe.empty()) {
+      std::fprintf(stderr, "error: batch requires -r <recipe>\n");
+      return 1;
+    }
+    return figtools::cli::command_batch(
+        arguments.positional[0], arguments.positional[1], recipe,
+        arguments.option("suffix", "_out"), arguments.option("format", "png"),
+        arguments.has_flag("recursive"), arguments.has_flag("overwrite"),
+        arguments.has_flag("json"));
   }
   if (command == "demo") {
     const std::string output_dir = arguments.option("o", "demo_out");

@@ -174,6 +174,9 @@ QCheckBox::indicator:checked { background: #B4562A; border-color: #B4562A; }
 QProgressBar { background: #E4DAC6; border: none; border-radius: 2px; height: 3px; }
 QProgressBar::chunk { background: #B4562A; border-radius: 2px; }
 QProgressBar#Status { background: #E4DAC6; max-height: 3px; }
+QProgressBar#BatchProgress { background: #EDE4D3; border: none; border-radius: 3px;
+                             min-height: 6px; max-height: 6px; }
+QProgressBar#BatchProgress::chunk { background: #B4562A; border-radius: 3px; }
 
 QSplitter::handle { background: #E4DAC6; }
 QSplitter::handle:horizontal { width: 1px; }

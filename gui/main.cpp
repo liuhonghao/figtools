@@ -9,7 +9,7 @@
 #include "theme.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "0.5.0"
+#define FIGTOOLS_VERSION "0.6.0"
 #endif
 
 int main(int argc, char** argv) {
@@ -35,6 +35,28 @@ int main(int argc, char** argv) {
   if (arguments.contains(QStringLiteral("--demo-annotations"))) {
     QTimer::singleShot(600, &window, [&window]() { window.addDemoAnnotations(); });
   }
+  const int batch_index = arguments.indexOf(QStringLiteral("--batch-dialog"));
+  if (batch_index >= 0 && batch_index + 1 < arguments.size()) {
+    const QString directory = arguments.at(batch_index + 1);
+    const int shot_index = arguments.indexOf(QStringLiteral("--screenshot"));
+    if (shot_index >= 0 && shot_index + 1 < arguments.size()) {
+      const QString path = arguments.at(shot_index + 1);
+      const int delay = arguments.contains(QStringLiteral("--delay"))
+                            ? arguments.at(arguments.indexOf(QStringLiteral("--delay")) + 1).toInt()
+                            : 900;
+      QTimer::singleShot(delay, &window, [path]() {
+        QWidget* target = QApplication::activeWindow();
+        if (target != nullptr) {
+          target->grab().save(path);
+          target->close();  // leaves the dialog's nested event loop
+        }
+        QApplication::quit();
+      });
+    }
+    window.openBatchDialog(directory);
+    return 0;
+  }
+
   const int index = arguments.indexOf(QStringLiteral("--screenshot"));
   if (index >= 0 && index + 1 < arguments.size()) {
     const QString path = arguments.at(index + 1);

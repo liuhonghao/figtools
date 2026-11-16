@@ -50,9 +50,11 @@ class MainWindow : public QMainWindow {
 
   // Fits the canvas before a screenshot so captures are framing-stable.
   void prepareForCapture();
+  void openBatchDialog(const QString& suggested_input = QString());
 
  protected:
   void dragEnterEvent(QDragEnterEvent* event) override;
+  void closeEvent(QCloseEvent* event) override;
   void dropEvent(QDropEvent* event) override;
 
  private:
@@ -140,6 +142,7 @@ class MainWindow : public QMainWindow {
   QAction* export_action_ = nullptr;
   QAction* fit_action_ = nullptr;
   QAction* actual_action_ = nullptr;
+  QString last_open_dir_;
 };
 
 }  // namespace figtools::gui

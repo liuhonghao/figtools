@@ -26,6 +26,7 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSettings>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
@@ -51,6 +52,7 @@
 #include "figtools/io/image_io.hpp"
 #include "figtools/ops/registry.hpp"
 #include "histogram_widget.hpp"
+#include "batch_dialog.hpp"
 #include "image_canvas.hpp"
 #include "theme.hpp"
 #include "widgets.hpp"
@@ -133,6 +135,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   resize(1440, 900);
   setAcceptDrops(true);
 
+  QSettings settings;
+  if (settings.contains(QStringLiteral("window/geometry"))) {
+    restoreGeometry(settings.value(QStringLiteral("window/geometry")).toByteArray());
+  }
+  last_open_dir_ = settings.value(QStringLiteral("paths/last_open")).toString();
+
   preview_timer_ = new QTimer(this);
   preview_timer_->setSingleShot(true);
   preview_timer_->setInterval(120);
@@ -180,7 +188,7 @@ void MainWindow::buildActions() {
   open_action_->setShortcut(QKeySequence::Open);
   connect(open_action_, &QAction::triggered, this, [this]() {
     const QString path = QFileDialog::getOpenFileName(
-        this, tr("打开图像"), QString(),
+        this, tr("打开图像"), last_open_dir_,
         tr("图像 (*.png *.bmp *.ppm *.pgm);;所有文件 (*.*)"));
     if (!path.isEmpty()) {
       loadPath(path);
@@ -195,6 +203,10 @@ void MainWindow::buildActions() {
   export_action_ = file_menu->addAction(tr("导出结果…"));
   export_action_->setShortcut(QKeySequence::Save);
   connect(export_action_, &QAction::triggered, this, &MainWindow::exportImage);
+
+  auto* batch_action = file_menu->addAction(tr("批量处理…"));
+  batch_action->setShortcut(QKeySequence(QStringLiteral("Ctrl+B")));
+  connect(batch_action, &QAction::triggered, this, [this]() { openBatchDialog(); });
 
   auto* export_recipe = file_menu->addAction(tr("保存配方…"));
   connect(export_recipe, &QAction::triggered, this, &MainWindow::saveRecipe);
@@ -467,6 +479,18 @@ void MainWindow::buildTopBar(QVBoxLayout* outer) {
   layout->addWidget(actual_button);
 
   outer->addWidget(bar);
+}
+
+void MainWindow::openBatchDialog(const QString& suggested_input) {
+  QString suggested = suggested_input;
+  if (suggested.isEmpty()) {
+    suggested = last_open_dir_;
+  }
+  if (!source_path_.isEmpty()) {
+    suggested = QFileInfo(source_path_).absolutePath();
+  }
+  BatchDialog dialog(recipe_, suggested, this);
+  dialog.exec();
 }
 
 void MainWindow::prepareForCapture() {
@@ -1652,6 +1676,7 @@ bool MainWindow::loadPath(const QString& path) {
   }
   source_ = std::move(image.value());
   source_path_ = path;
+  last_open_dir_ = QFileInfo(path).absolutePath();
   annotations_.clear();
   annotations_.set_image_size(0, 0);
   refreshAnnotationLists();
@@ -1676,6 +1701,13 @@ void MainWindow::loadSample() {
   }
   updateInfoPanel();
   runPreview();
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+  QSettings settings;
+  settings.setValue(QStringLiteral("window/geometry"), saveGeometry());
+  settings.setValue(QStringLiteral("paths/last_open"), last_open_dir_);
+  QMainWindow::closeEvent(event);
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent* event) {
