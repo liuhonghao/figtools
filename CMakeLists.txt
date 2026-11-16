@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(figtools
-  VERSION 0.7.0
+  VERSION 0.8.0
   DESCRIPTION "Image processing workbench: deterministic pipelines, operator registry, CLI"
   HOMEPAGE_URL "https://github.com/liuhonghao/figtools"
   LANGUAGES CXX
@@ -160,11 +160,22 @@ if(FIGTOOLS_BUILD_GUI)
     gui/widgets.hpp
     gui/batch_dialog.cpp
     gui/batch_dialog.hpp
+    gui/train_dialog.cpp
+    gui/train_dialog.hpp
+    gui/python_env.cpp
+    gui/python_env.hpp
   )
   target_include_directories(figtools_gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gui)
   target_compile_definitions(figtools_gui PRIVATE FIGTOOLS_VERSION="${PROJECT_VERSION}")
   target_link_libraries(figtools_gui PRIVATE ft_pipeline ft_annotate ft_dataset ft_batch Qt6::Widgets figtools::warnings)
   set_target_properties(figtools_gui PROPERTIES AUTOMOC ON)
+  # The trainer and the inference script ship next to the executable so the
+  # app can start them without knowing where the source tree lives.
+  add_custom_command(TARGET figtools_gui POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:figtools_gui>/python"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/python" "$<TARGET_FILE_DIR:figtools_gui>/python"
+  )
   install(TARGETS figtools_gui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 

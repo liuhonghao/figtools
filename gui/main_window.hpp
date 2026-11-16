@@ -10,7 +10,10 @@
 
 #include <QMainWindow>
 #include <QString>
+#include <QTemporaryDir>
 #include <QTimer>
+
+#include <memory>
 
 #include "figtools/annotate/annotation.hpp"
 #include "figtools/core/image.hpp"
@@ -53,6 +56,11 @@ class MainWindow : public QMainWindow {
   // Fits the canvas before a screenshot so captures are framing-stable.
   void prepareForCapture();
   void openBatchDialog(const QString& suggested_input = QString());
+  void openTrainDialog(const QString& data_hint = QString());
+  void chooseModel();
+  void loadModel(const QString& directory);
+  void runInference();
+  void refreshModelPanel();
 
  protected:
   void dragEnterEvent(QDragEnterEvent* event) override;
@@ -118,6 +126,7 @@ class MainWindow : public QMainWindow {
   QLabel* chain_summary_ = nullptr;
   KeyValueList* info_list_ = nullptr;
   KeyValueList* stats_list_ = nullptr;
+  KeyValueList* model_list_ = nullptr;
   QLabel* status_file_ = nullptr;
   QLabel* status_message_ = nullptr;
   QLabel* status_size_ = nullptr;
@@ -154,6 +163,15 @@ class MainWindow : public QMainWindow {
   QToolButton* undo_button_ = nullptr;
   QToolButton* redo_button_ = nullptr;
   QString last_open_dir_;
+  QString model_dir_;
+  QString model_arch_;
+  int model_input_ = 224;
+  int model_classes_ = 0;
+  double model_val_ = -1.0;
+  QString prediction_label_;
+  QString prediction_second_;
+  double prediction_confidence_ = -1.0;
+  std::unique_ptr<QTemporaryDir> inference_temp_;
 };
 
 }  // namespace figtools::gui

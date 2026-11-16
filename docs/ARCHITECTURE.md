@@ -111,6 +111,20 @@ using OperatorFn = Result<Image>(const ImageView&, const Params&);
 真正的配额约束（每类在 val 里恰好 N 个）留给需要时再加，因为过度约束反而会在大数据集
 上造成系统性偏移。
 
+## 4.7 Python 进程边界（训练与推理）
+
+产品主程序不链接 PyTorch。训练与推理是两个一次性 Python 进程：
+
+* `train.py --job job.json` → stdout 逐行 NDJSON（`dataset` / `epoch` / `done` / `error`），
+  stderr 是给人看的日志；C++ 用 `QProcess` 读事件并更新进度条与日志列表。
+* `predict.py --model <dir> --image <path>` → stdout 一个 JSON 对象
+  （`label` / `confidence` / `topk`）；C++ 解析后更新右栏与画布标签。
+
+这样约定的好处：torch OOM 或崩溃只影响那个进程；模型格式由 `model.json` 描述，
+C++ 不必理解权重；未来换 ONNX Runtime 或长驻服务只需替换 worker，界面不变。
+代价是每次推理都要付一次解释器启动成本（约 1–3 秒），因此推理时给出明确的忙碌提示，
+批量推理留给 v0.9。
+
 ## 5. I/O 边界
 
 - 解码器统一输出 RGBA8。灰度复制三通道，调色板展开，24 位 BMP 补 alpha=255。

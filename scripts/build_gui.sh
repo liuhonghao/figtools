@@ -38,6 +38,7 @@ echo "==> moc"
 "$QT_ROOT/bin/moc.exe" gui/main_window.hpp -o "$OUT_DIR/moc_main_window.cpp"
 "$QT_ROOT/bin/moc.exe" gui/widgets.hpp -o "$OUT_DIR/moc_widgets.cpp"
 "$QT_ROOT/bin/moc.exe" gui/batch_dialog.hpp -o "$OUT_DIR/moc_batch_dialog.cpp"
+"$QT_ROOT/bin/moc.exe" gui/train_dialog.hpp -o "$OUT_DIR/moc_train_dialog.cpp"
 
 echo "==> compile and link"
 "$CXX" -std=c++20 -O2 -DQT_NO_DEBUG -DUNICODE -D_UNICODE \
@@ -49,6 +50,12 @@ echo "==> compile and link"
   gui/*.cpp "$OUT_DIR"/moc_*.cpp \
   -L"$QT_ROOT/lib" -lQt6Widgets -lQt6Gui -lQt6Core -lz \
   -o "$OUT_DIR/figtools_gui.exe"
+
+mkdir -p python/ft_train
+rm -rf python/ft_train/__pycache__
+echo "==> deploy python scripts"
+rm -rf "$OUT_DIR/python"
+cp -r python "$OUT_DIR/python"
 
 echo "==> deploy runtime (DLLs next to the executable)"
 cp "$QT_ROOT/bin/Qt6Widgets.dll" "$QT_ROOT/bin/Qt6Gui.dll" "$QT_ROOT/bin/Qt6Core.dll" "$OUT_DIR/"

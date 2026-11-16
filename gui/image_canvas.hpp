@@ -55,6 +55,10 @@ class ImageCanvas : public QWidget {
   [[nodiscard]] int selected_index() const { return selected_; }
   void setSelectedIndex(int index);
 
+  // A classifier result shown as a chip on the image; empty label clears it.
+  void setInferenceResult(const QString& label, double confidence);
+  void clearInferenceResult();
+
   void setStatusCallback(std::function<void(const QString&)> callback);
   void setCursorCallback(std::function<void(QPoint, bool)> callback);
   void setZoomCallback(std::function<void(double)> callback);
@@ -108,6 +112,9 @@ class ImageCanvas : public QWidget {
   std::function<void(const QString&)> status_callback_;
   std::function<void(QPoint, bool)> cursor_callback_;
   std::function<void(double)> zoom_callback_;
+
+  QString inference_label_;
+  double inference_confidence_ = -1.0;
 };
 
 }  // namespace figtools::gui

@@ -26,7 +26,12 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QProcess>
 #include <QSettings>
+#include <QTemporaryDir>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
@@ -54,11 +59,13 @@
 #include "histogram_widget.hpp"
 #include "batch_dialog.hpp"
 #include "image_canvas.hpp"
+#include "python_env.hpp"
+#include "train_dialog.hpp"
 #include "theme.hpp"
 #include "widgets.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "0.7.0"
+#define FIGTOOLS_VERSION "0.8.0"
 #endif
 
 namespace figtools::gui {
@@ -254,6 +261,16 @@ void MainWindow::buildActions() {
       canvas_->zoomToActualSize();
     }
   });
+
+  auto* model_menu = menuBar()->addMenu(tr("模型(&M)"));
+  auto* train_action = model_menu->addAction(tr("训练模型…"));
+  train_action->setShortcut(QKeySequence(QStringLiteral("Ctrl+T")));
+  connect(train_action, &QAction::triggered, this, [this]() { openTrainDialog(); });
+  auto* choose_model_action = model_menu->addAction(tr("载入模型…"));
+  connect(choose_model_action, &QAction::triggered, this, &MainWindow::chooseModel);
+  auto* infer_action = model_menu->addAction(tr("对当前图像推理"));
+  infer_action->setShortcut(QKeySequence(QStringLiteral("Ctrl+R")));
+  connect(infer_action, &QAction::triggered, this, &MainWindow::runInference);
 
   auto* help_menu = menuBar()->addMenu(tr("帮助(&H)"));
   auto* about_action = help_menu->addAction(tr("关于 figtools"));
@@ -905,6 +922,14 @@ QWidget* MainWindow::buildFactsPanel(QWidget* parent) {
   stats_list_ = new KeyValueList(panel);
   stats_list_->set_rows({});
   layout->addWidget(stats_list_);
+
+  layout->addSpacing(10);
+  layout->addWidget(theme::section_label(tr("模型"), panel));
+  layout->addWidget(theme::hairline(panel));
+  layout->addSpacing(2);
+  model_list_ = new KeyValueList(panel);
+  model_list_->set_rows({{tr("模型"), tr("未载入")}, {tr("预测"), tr("—")}});
+  layout->addWidget(model_list_);
 
   layout->addStretch(1);
   return panel;
@@ -1801,6 +1826,13 @@ bool MainWindow::loadPath(const QString& path) {
   annotations_.set_image_size(0, 0);
   refreshAnnotationLists();
   setWindowTitle(tr("figtools — %1").arg(QFileInfo(path).fileName()));
+  prediction_label_.clear();
+  prediction_second_.clear();
+  prediction_confidence_ = -1.0;
+  refreshModelPanel();
+  if (canvas_ != nullptr) {
+    canvas_->clearInferenceResult();
+  }
   if (status_file_ != nullptr) {
     status_file_->setText(QFileInfo(path).fileName());
   }
@@ -1816,11 +1848,184 @@ void MainWindow::loadSample() {
   annotations_.set_image_size(0, 0);
   refreshAnnotationLists();
   setWindowTitle(tr("figtools — 图像工作台"));
+  prediction_label_.clear();
+  prediction_second_.clear();
+  prediction_confidence_ = -1.0;
+  refreshModelPanel();
+  if (canvas_ != nullptr) {
+    canvas_->clearInferenceResult();
+  }
   if (status_file_ != nullptr) {
     status_file_->setText(tr("示例图"));
   }
   updateInfoPanel();
   runPreview();
+}
+
+// ---------------------------------------------------------------------------
+// Models: training, loading, inference
+// ---------------------------------------------------------------------------
+
+void MainWindow::openTrainDialog(const QString& data_hint) {
+  const QString hint = !data_hint.isEmpty()
+                           ? data_hint
+                           : (dataset_path_.isEmpty() ? last_open_dir_ : dataset_path_);
+  TrainDialog dialog(hint, this);
+  connect(&dialog, &TrainDialog::modelReady, this,
+          [this](const QString& directory) { loadModel(directory); });
+  dialog.exec();
+}
+
+void MainWindow::chooseModel() {
+  QSettings settings;
+  const QString start = settings.value(QStringLiteral("model/last"), model_dir_).toString();
+  const QString directory =
+      QFileDialog::getExistingDirectory(this, tr("选择模型目录"), start);
+  if (!directory.isEmpty()) {
+    loadModel(directory);
+  }
+}
+
+void MainWindow::loadModel(const QString& directory) {
+  QFile file(directory + QStringLiteral("/model.json"));
+  if (!file.open(QIODevice::ReadOnly)) {
+    QMessageBox::warning(this, tr("无法载入模型"),
+                         tr("目录里没有 model.json：%1").arg(directory));
+    return;
+  }
+  const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+  if (!document.isObject()) {
+    QMessageBox::warning(this, tr("模型无效"), tr("model.json 不是有效的 JSON 对象。"));
+    return;
+  }
+  const QJsonObject metadata = document.object();
+  model_dir_ = directory;
+  model_arch_ = metadata.value(QStringLiteral("arch")).toString();
+  model_input_ = metadata.value(QStringLiteral("input_size")).toInt(224);
+  model_classes_ = metadata.value(QStringLiteral("classes")).toArray().size();
+  const QJsonObject metrics = metadata.value(QStringLiteral("metrics")).toObject();
+  model_val_ = metrics.contains(QStringLiteral("val_accuracy"))
+                   ? metrics.value(QStringLiteral("val_accuracy")).toDouble()
+                   : -1.0;
+  prediction_label_.clear();
+  prediction_second_.clear();
+  prediction_confidence_ = -1.0;
+  refreshModelPanel();
+  if (canvas_ != nullptr) {
+    canvas_->clearInferenceResult();
+  }
+
+  QSettings settings;
+  settings.setValue(QStringLiteral("model/last"), directory);
+  notify(tr("已载入模型 %1").arg(QFileInfo(directory).fileName()), 4000);
+}
+
+void MainWindow::refreshModelPanel() {
+  if (model_list_ == nullptr) {
+    return;
+  }
+  if (model_dir_.isEmpty()) {
+    model_list_->set_rows({{tr("模型"), tr("未载入")}, {tr("预测"), tr("—")}});
+    return;
+  }
+  const QString confidence =
+      prediction_confidence_ >= 0.0
+          ? QStringLiteral("%1%").arg(prediction_confidence_ * 100.0, 0, 'f', 1)
+          : QStringLiteral("—");
+  model_list_->set_rows({
+      {tr("模型"), QFileInfo(model_dir_).fileName()},
+      {tr("架构"), QStringLiteral("%1 · %2 px").arg(model_arch_).arg(model_input_)},
+      {tr("类别"), QString::number(model_classes_)},
+      {tr("验证"), model_val_ >= 0.0 ? QString::number(model_val_, 'f', 3) : QStringLiteral("—")},
+      {tr("预测"), prediction_label_.isEmpty() ? QStringLiteral("—") : prediction_label_},
+      {tr("置信度"), confidence},
+      {tr("次优"), prediction_second_.isEmpty() ? QStringLiteral("—") : prediction_second_},
+  });
+}
+
+void MainWindow::runInference() {
+  if (source_.empty()) {
+    notify(tr("没有可推理的图像"), 3000);
+    return;
+  }
+  if (model_dir_.isEmpty()) {
+    QMessageBox::information(this, tr("没有模型"), tr("请先训练模型，或载入一个模型包。"));
+    chooseModel();
+    if (model_dir_.isEmpty()) {
+      return;
+    }
+  }
+
+  QString image_path = source_path_;
+  if (image_path.isEmpty()) {
+    if (!inference_temp_) {
+      inference_temp_ = std::make_unique<QTemporaryDir>();
+    }
+    image_path = inference_temp_->filePath(QStringLiteral("current.png"));
+    if (auto saved = save_image(source_, image_path.toStdString()); !saved) {
+      QMessageBox::warning(this, tr("推理失败"), error_text(saved.error()));
+      return;
+    }
+  }
+
+  const QString python =
+      QSettings().value(QStringLiteral("python/executable"), resolve_python()).toString();
+  const QString scripts = python_scripts_dir();
+
+  setBusy(true, tr("推理中…"));
+  QProcess process;
+  process.setWorkingDirectory(scripts);
+  process.setProcessChannelMode(QProcess::SeparateChannels);
+  process.start(python, {QStringLiteral("predict.py"), QStringLiteral("--model"), model_dir_,
+                         QStringLiteral("--image"), image_path, QStringLiteral("--topk"),
+                         QStringLiteral("3")});
+  const bool started = process.waitForStarted(5000);
+  const bool finished = started && process.waitForFinished(180000);
+  setBusy(false);
+
+  if (!started) {
+    QMessageBox::warning(this, tr("无法启动 Python"), process.errorString());
+    return;
+  }
+  if (!finished) {
+    process.kill();
+    QMessageBox::warning(this, tr("推理超时"), tr("推理进程在 3 分钟内没有返回。"));
+    return;
+  }
+  if (process.exitCode() != 0) {
+    const QString message = QString::fromUtf8(process.readAllStandardError()).trimmed();
+    QMessageBox::warning(this, tr("推理失败"),
+                         message.isEmpty() ? tr("推理进程返回 %1").arg(process.exitCode())
+                                           : message.right(800));
+    return;
+  }
+
+  const QJsonDocument document = QJsonDocument::fromJson(process.readAllStandardOutput());
+  if (!document.isObject()) {
+    QMessageBox::warning(this, tr("推理失败"), tr("推理脚本没有返回 JSON。"));
+    return;
+  }
+  const QJsonObject result = document.object();
+  prediction_label_ = result.value(QStringLiteral("label")).toString();
+  prediction_confidence_ = result.value(QStringLiteral("confidence")).toDouble(-1.0);
+  const QJsonArray topk = result.value(QStringLiteral("topk")).toArray();
+  if (topk.size() > 1) {
+    const QJsonObject second = topk.at(1).toObject();
+    prediction_second_ = QStringLiteral("%1 %2%")
+                             .arg(second.value(QStringLiteral("label")).toString())
+                             .arg(second.value(QStringLiteral("score")).toDouble() * 100.0, 0, 'f',
+                                  1);
+  } else {
+    prediction_second_.clear();
+  }
+  refreshModelPanel();
+  if (canvas_ != nullptr) {
+    canvas_->setInferenceResult(prediction_label_, prediction_confidence_);
+  }
+  notify(tr("预测：%1 · %2%")
+             .arg(prediction_label_)
+             .arg(prediction_confidence_ * 100.0, 0, 'f', 1),
+         5000);
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {

@@ -13,7 +13,7 @@
 #include "theme.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "0.7.0"
+#define FIGTOOLS_VERSION "0.8.0"
 #endif
 
 int main(int argc, char** argv) {
@@ -39,26 +39,57 @@ int main(int argc, char** argv) {
   if (arguments.contains(QStringLiteral("--demo-annotations"))) {
     QTimer::singleShot(600, &window, [&window]() { window.addDemoAnnotations(); });
   }
+  // Shared capture hook for modal dialogs: grab the active window, close it
+  // (which leaves its nested event loop) and quit.
+  const auto capture_dialog = [&arguments, &window](const QString& path) {
+    const int delay = arguments.contains(QStringLiteral("--delay"))
+                          ? arguments.at(arguments.indexOf(QStringLiteral("--delay")) + 1).toInt()
+                          : 900;
+    QTimer::singleShot(delay, &window, [path]() {
+      QWidget* target = QApplication::activeWindow();
+      if (target != nullptr) {
+        target->grab().save(path);
+        target->close();
+      }
+      QApplication::quit();
+    });
+  };
+
   const int batch_index = arguments.indexOf(QStringLiteral("--batch-dialog"));
   if (batch_index >= 0 && batch_index + 1 < arguments.size()) {
     const QString directory = arguments.at(batch_index + 1);
     const int shot_index = arguments.indexOf(QStringLiteral("--screenshot"));
     if (shot_index >= 0 && shot_index + 1 < arguments.size()) {
-      const QString path = arguments.at(shot_index + 1);
-      const int delay = arguments.contains(QStringLiteral("--delay"))
-                            ? arguments.at(arguments.indexOf(QStringLiteral("--delay")) + 1).toInt()
-                            : 900;
-      QTimer::singleShot(delay, &window, [path]() {
-        QWidget* target = QApplication::activeWindow();
-        if (target != nullptr) {
-          target->grab().save(path);
-          target->close();  // leaves the dialog's nested event loop
-        }
-        QApplication::quit();
-      });
+      capture_dialog(arguments.at(shot_index + 1));
     }
     window.openBatchDialog(directory);
     return 0;
+  }
+
+  const int train_index = arguments.indexOf(QStringLiteral("--train-dialog"));
+  if (train_index >= 0 && train_index + 1 < arguments.size()) {
+    const QString directory = arguments.at(train_index + 1);
+    const int shot_index = arguments.indexOf(QStringLiteral("--screenshot"));
+    if (shot_index >= 0 && shot_index + 1 < arguments.size()) {
+      capture_dialog(arguments.at(shot_index + 1));
+    }
+    window.openTrainDialog(directory);
+    return 0;
+  }
+
+  const int open_index = arguments.indexOf(QStringLiteral("--open"));
+  if (open_index >= 0 && open_index + 1 < arguments.size()) {
+    const QString path = arguments.at(open_index + 1);
+    QTimer::singleShot(300, &window, [&window, path]() { window.loadPath(path); });
+  }
+
+  const int infer_index = arguments.indexOf(QStringLiteral("--demo-infer"));
+  if (infer_index >= 0 && infer_index + 1 < arguments.size()) {
+    const QString directory = arguments.at(infer_index + 1);
+    QTimer::singleShot(500, &window, [&window, directory]() {
+      window.loadModel(directory);
+    });
+    QTimer::singleShot(800, &window, [&window]() { window.runInference(); });
   }
 
   const int edit_index = arguments.indexOf(QStringLiteral("--demo-edit"));

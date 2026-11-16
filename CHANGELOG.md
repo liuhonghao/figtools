@@ -3,6 +3,28 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.8.0] - 2026-11-16
+
+### Added
+
+- **Python worker**（`python/`）：`train.py` 训练分类器、`predict.py` 单图推理，
+  通过 stdout 的 NDJSON 事件与 C++ 通信，日志走 stderr。已在本机
+  Python 3.10 / torch 2.11（CUDA 可用）验证。
+- 支持两种数据布局：ImageFolder 类文件夹，以及数据集页导出的快照
+  （`images/ annotations/ splits/ dataset.json`，按标注主类别取标签）。
+- 三种架构：`resnet18`、`mobilenet_v3_small`、`smallcnn`；AdamW + 余弦退火，
+  按验证精度保留最佳权重；训练集/验证集/测试集分别评估，种子固定可复现。
+- **模型包**：`model.pt`、`model.json`（C++ 可读元数据）、`metrics.json`（逐轮曲线）、
+  `job.json`（完整训练配置）。
+- **界面**：`Ctrl+T` 训练对话框（解释器、架构、轮数、批大小、学习率、设备），
+  实时轮次进度与日志；`Ctrl+R` 对当前图像推理，结果写入右栏“模型”区并在画布上显示标签。
+- 自动探测带 torch 的 conda 环境；`FIGTOOLS_PYTHON` 与设置项可覆盖。
+- `python/smoke_test.py`：生成两类小图 → 训练 → 推理 → 断言，端到端冒烟，本机通过。
+
+### Changed
+
+- 构建脚本与 CMake 把 `python/` 复制到可执行文件旁，运行时不依赖源码树位置。
+
 ## [0.7.0] - 2026-11-16
 
 ### Added

@@ -107,6 +107,18 @@ void ImageCanvas::setSelectedIndex(int index) {
   update();
 }
 
+void ImageCanvas::setInferenceResult(const QString& label, double confidence) {
+  inference_label_ = label;
+  inference_confidence_ = confidence;
+  update();
+}
+
+void ImageCanvas::clearInferenceResult() {
+  inference_label_.clear();
+  inference_confidence_ = -1.0;
+  update();
+}
+
 void ImageCanvas::fitToWindow() {
   zoom_ = 1.0;
   pan_ = QPointF(0.0, 0.0);
@@ -436,12 +448,13 @@ void ImageCanvas::paintEvent(QPaintEvent* event) {
   drawAnnotations(painter);
 
   // Corner chips: dark glass, one accent dot, no drop shadow.
-  const auto chip = [&painter](QPointF top_left, const QString& text, const QColor& dot) {
+  const auto chip = [&painter](QPointF top_left, const QString& text, const QColor& dot,
+                               const QColor& border = kChipBorder) {
     painter.setFont(theme::ui_font(10, QFont::DemiBold));
     const QFontMetricsF metrics(painter.font());
     const qreal width = metrics.horizontalAdvance(text) + 30.0;
     const QRectF box(top_left.x(), top_left.y(), width, 22.0);
-    painter.setPen(QPen(kChipBorder, 1.0));
+    painter.setPen(QPen(border, 1.0));
     painter.setBrush(kChipFill);
     painter.drawRoundedRect(box, 4, 4);
     painter.setPen(Qt::NoPen);
@@ -461,6 +474,14 @@ void ImageCanvas::paintEvent(QPaintEvent* event) {
     chip(QPointF(drawn.right() - 78, drawn.top() + 10), tr("结果"), after_dot);
   } else {
     chip(QPointF(drawn.left() + 10, drawn.top() + 10), tr("结果"), after_dot);
+  }
+
+  if (!inference_label_.isEmpty() && !drawn.isEmpty()) {
+    const QString text = tr("%1   %2%")
+                             .arg(inference_label_)
+                             .arg(inference_confidence_ * 100.0, 0, 'f', 1);
+    chip(QPointF(drawn.left() + 10, drawn.bottom() - 32), text,
+         theme::colour(theme::kAccent), theme::colour(theme::kAccent));
   }
 
   painter.setRenderHint(QPainter::Antialiasing, false);

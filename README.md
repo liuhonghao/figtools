@@ -19,7 +19,8 @@
 | **v0.5** | 界面重做：暖纸色主题、自绘图标与控件、标定靶示例图、统一状态消息 | ✅ 可用 |
 | **v0.6** | 批量处理：目录扫描、逐张套用管线、进度/日志/取消、跳过已存在 | ✅ 可用 |
 | **v0.7** | 撤销/重做：配方快照历史、参数拖动合并、Ctrl+Z / Ctrl+Y | ✅ 可用 |
-| v0.8 | Python 训练 worker、ONNX 交接、模型注册表 | 规划中 |
+| **v0.8** | Python 训练与推理：PyTorch 分类训练、模型包、推理结果上画布 | ✅ 可用 |
+| v0.9 | ONNX 导出、批量推理、检测/分割模型 | 规划中 |
 | v1.0 | 插件 ABI、批量任务中心、团队模式 | 规划中 |
 
 ![workbench](docs/images/workbench.png)
@@ -30,7 +31,30 @@
 
 ![batch](docs/images/batch.png)
 
+![training](docs/images/training.png)
+
+![inference](docs/images/inference.png)
+
 当前仓库是**可运行的纵向切片**，不是界面原型：`figtools demo` 会真的生成图像、跑处理链、写出结果并给出 PSNR/SSIM。
+
+## 训练与推理（Python worker）
+
+产品本体仍是 C++/Qt，不链接 PyTorch；训练与推理由独立的 Python 进程完成，崩溃不会带走界面。
+
+```bash
+# 在装有 torch/torchvision/Pillow 的环境里（例如 conda 的某个 env）
+python python/train.py   --job job.json
+python python/predict.py --model D:/models/run-1 --image D:/data/a.png --topk 3
+python python/smoke_test.py
+```
+
+数据目录可以是「每类一个子文件夹」，也可以是**数据集页导出的快照**（按标注主类别取标签，无标注的图跳过）。
+模型包是 `model.pt + model.json + metrics.json + job.json`，`model.json` 是 C++ 侧可读的元数据。
+
+界面里：**模型 → 训练模型…**（`Ctrl+T`）选择解释器、架构、轮数、批大小、学习率和设备，训练时逐轮输出
+loss / 训练精度 / 验证精度；**模型 → 载入模型…** 之后按 `Ctrl+R` 对当前图像推理，
+结果同时出现在右栏和画布上的赤陶色标签里。解释器会自动在 `~/.conda/envs` 中找带 torch 的环境，
+也可用 `FIGTOOLS_PYTHON` 指定。详见 [python/README.md](python/README.md)。
 
 ## 它解决什么问题
 
@@ -196,6 +220,7 @@ src/dataset/          数据集扫描、确定性划分、快照导出
 src/pipeline/         Recipe、执行器
 src/cli/              命令行
 gui/                  Qt 6 桌面外壳（可选构建）
+python/               PyTorch 训练与推理 worker（NDJSON 事件协议）
 tests/                79 项单元测试（零第三方依赖）
 scripts/              无 CMake 时的构建脚本
 docs/                 架构、设计基线、ADR、截图
