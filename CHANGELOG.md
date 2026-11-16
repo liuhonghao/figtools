@@ -3,6 +3,26 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.0] - 2026-11-16
+
+### Added
+
+- **双主题切换**：暖色（米灰 + 赤陶）与冷色（蓝灰 + 钢蓝）。色板集中在 theme.*，
+  QSS 用语义占位符按主题替换；所有 `theme::colour(k*)` 调用自动跟随。
+  顶栏主题按钮 + 视图 Ribbon 入口，QSettings 保存偏好，`--theme cool|warm` 可命令行覆盖。
+- **YOLO 版本选择**：训练对话框新增版本下拉（v3/v5/v8/v9/v10/11/12/26 的常用规模）与
+  「从零训练」勾选；variant 自动拼成 yaml（本地结构）或 .pt（预训练）。YOLO27 官方未发布，未提供。
+- **长驻推理服务**（`python/server.py`）：一个进程缓存模型，支持 classify/detect/yolo/ocr/segment
+  JSON 行协议；C++ 侧 `InferenceClient` 自动重启崩溃的 worker。实测第二次 YOLO 推理 58 ms（首次 6.9 s）。
+- **实例分割**：`train_segment.py` 把多边形/矩形标注转成 YOLO-seg 标签并训练；
+  400 图 12 轮 mAP50 0.9925；画布新增半透明掩码覆盖层；模型类型 `yolo-seg`。
+- **OCR 入口**：worker 内置 rapidocr 调用；界面「模型 → OCR 识别当前图像」，
+  缺依赖时提示 `pip install rapidocr-onnxruntime`，不阻塞主程序。
+
+### Fixed
+
+- `src/core/pyramid.cpp` 补入 CMake（此前只在手动 glob 构建中编译，CI 会漏）。
+
 ## [1.2.0] - 2026-11-16
 
 ### Added

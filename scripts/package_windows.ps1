@@ -6,8 +6,8 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $source = Join-Path $root "build\gui"
 $dist = Join-Path $root "dist"
-$stage = Join-Path $dist "figtools-1.2.0-win64"
-$zip = Join-Path $dist "figtools-1.2.0-win64.zip"
+$stage = Join-Path $dist "figtools-1.3.0-win64"
+$zip = Join-Path $dist "figtools-1.3.0-win64.zip"
 
 if (-not (Test-Path (Join-Path $source "figtools_gui.exe"))) {
     Write-Error "Desktop binary not found. Run scripts/build_gui.sh first."
@@ -40,7 +40,7 @@ start "" "figtools_gui.exe"
 Set-Content -Path (Join-Path $stage "run_figtools.bat") -Value $launcher -Encoding Ascii
 
 $readme = @'
-figtools 1.2.0 - image workbench
+figtools 1.3.0 - image workbench
 
 Run: double-click run_figtools.bat
 Or:  figtools_gui.exe

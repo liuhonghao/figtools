@@ -38,6 +38,7 @@ echo "==> moc"
 "$QT_ROOT/bin/moc.exe" gui/main_window.hpp -o "$OUT_DIR/moc_main_window.cpp"
 "$QT_ROOT/bin/moc.exe" gui/widgets.hpp -o "$OUT_DIR/moc_widgets.cpp"
 "$QT_ROOT/bin/moc.exe" gui/batch_dialog.hpp -o "$OUT_DIR/moc_batch_dialog.cpp"
+"$QT_ROOT/bin/moc.exe" gui/inference_client.hpp -o "$OUT_DIR/moc_inference_client.cpp"
 "$QT_ROOT/bin/moc.exe" gui/train_dialog.hpp -o "$OUT_DIR/moc_train_dialog.cpp"
 "$QT_ROOT/bin/moc.exe" gui/batch_infer_dialog.hpp -o "$OUT_DIR/moc_batch_infer_dialog.cpp"
 

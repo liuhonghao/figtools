@@ -62,6 +62,8 @@ class TrainDialog : public QDialog {
   QLineEdit* output_edit_ = nullptr;
   QLineEdit* python_edit_ = nullptr;
   QComboBox* task_combo_ = nullptr;
+  QComboBox* yolo_version_combo_ = nullptr;
+  QCheckBox* yolo_from_scratch_ = nullptr;
   QComboBox* arch_combo_ = nullptr;
   QComboBox* device_combo_ = nullptr;
   QSpinBox* input_spin_ = nullptr;

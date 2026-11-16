@@ -20,6 +20,8 @@
 #include "figtools/dataset/dataset.hpp"
 #include "figtools/pipeline/executor.hpp"
 #include "figtools/pipeline/history.hpp"
+
+#include "inference_client.hpp"
 #include "figtools/pipeline/recipe.hpp"
 
 class QAction;
@@ -63,6 +65,8 @@ class MainWindow : public QMainWindow {
   void loadModel(const QString& directory);
   void runInference();
   void runDetection();
+  void runSegmentation();
+  void runOCR();
   void openBatchInferDialog(const QString& data_hint = QString());
   void refreshModelPanel();
 
@@ -111,6 +115,7 @@ class MainWindow : public QMainWindow {
   void setBusy(bool busy, const QString& message = QString());
   void notify(const QString& text, int timeout_ms = 3000);
   void setCompareMode(int mode);
+  void toggleTheme();
   void commitRecipe(const QString& label, const QString& coalesce_token = QString());
   void undoRecipe();
   void redoRecipe();
@@ -174,6 +179,7 @@ class MainWindow : public QMainWindow {
   QAction* redo_action_ = nullptr;
   QToolButton* undo_button_ = nullptr;
   QToolButton* redo_button_ = nullptr;
+  QToolButton* theme_button_ = nullptr;
   QButtonGroup* mode_group_ = nullptr;
   QStackedWidget* ribbon_stack_ = nullptr;
   QWidget* output_dock_ = nullptr;
@@ -189,6 +195,7 @@ class MainWindow : public QMainWindow {
   QString prediction_second_;
   double prediction_confidence_ = -1.0;
   std::unique_ptr<QTemporaryDir> inference_temp_;
+  std::unique_ptr<figtools::gui::InferenceClient> inference_;
 };
 
 }  // namespace figtools::gui

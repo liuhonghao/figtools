@@ -71,6 +71,14 @@ class ImageCanvas : public QWidget {
   void clearDetections();
   [[nodiscard]] const std::vector<Detection>& detections() const { return detections_; }
 
+  struct Segment {
+    QString label;
+    double confidence = 0.0;
+    std::vector<QPointF> polygon;
+  };
+  void setSegments(std::vector<Segment> segments);
+  void clearSegments();
+
   void setStatusCallback(std::function<void(const QString&)> callback);
   void setCursorCallback(std::function<void(QPoint, bool)> callback);
   void setZoomCallback(std::function<void(double)> callback);
@@ -94,6 +102,7 @@ class ImageCanvas : public QWidget {
   void drawEmptyState(QPainter& painter);
   void drawAnnotations(QPainter& painter);
   void drawDetections(QPainter& painter);
+  void drawSegments(QPainter& painter);
   [[nodiscard]] QRectF displayedImageRect() const;
   [[nodiscard]] QPointF toImagePointF(QPointF widget_point) const;
   [[nodiscard]] int hitTest(QPointF image_point) const;
@@ -129,6 +138,7 @@ class ImageCanvas : public QWidget {
   QString inference_label_;
   double inference_confidence_ = -1.0;
   std::vector<Detection> detections_;
+  std::vector<Segment> segments_;
 };
 
 }  // namespace figtools::gui

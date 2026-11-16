@@ -243,7 +243,7 @@ void BatchDialog::refreshCount() {
   const QString directory = input_edit_->text();
   if (directory.isEmpty()) {
     count_label_->setText(tr("尚未选择输入目录"));
-    count_label_->setStyleSheet(QStringLiteral("color:%1;").arg(theme::kTextFaint));
+    count_label_->setStyleSheet(QStringLiteral("color:%1;").arg(theme::colour(theme::kTextFaint).name()));
     start_button_->setEnabled(false);
     return;
   }
@@ -251,7 +251,7 @@ void BatchDialog::refreshCount() {
   if (!listed) {
     count_label_->setText(tr("无法读取该目录：%1")
                               .arg(QString::fromStdString(listed.error().message)));
-    count_label_->setStyleSheet(QStringLiteral("color:%1;").arg(theme::kDanger));
+    count_label_->setStyleSheet(QStringLiteral("color:%1;").arg(theme::colour(theme::kDanger).name()));
     start_button_->setEnabled(false);
     return;
   }
@@ -261,7 +261,7 @@ void BatchDialog::refreshCount() {
   }
   const std::size_t total = listed.value().size();
   count_label_->setText(tr("共 %1 张图片").arg(total));
-  count_label_->setStyleSheet(QStringLiteral("color:%1;").arg(total > 0 ? theme::kTextDim
+  count_label_->setStyleSheet(QStringLiteral("color:%1;").arg(total > 0 ? theme::colour(theme::kTextDim).name()
                                                                       : theme::kWarning));
   start_button_->setEnabled(total > 0);
 }

@@ -1,13 +1,12 @@
 // Copyright 2026 figtools authors
 // SPDX-License-Identifier: MIT
 //
-// Visual language for the desktop shell.
+// Visual language for the desktop shell, with two switchable palettes.
 //
 // A professional inspection workbench in the spirit of LiDAR360 / WolkenVision:
-// a calm warm-neutral chrome around a large data view, a Ribbon of grouped
-// commands, a project tree on the left, an inspector on the right, an output
-// dock at the bottom. One accent reserved for active state and primary action.
-// No dark theme, no metallic gradients -- the ground stays warm paper white.
+// calm chrome around a large data view, a Ribbon of grouped commands, a project
+// tree, an inspector and an output dock. Both palettes share the same layout,
+// type scale and control shapes; only colour changes.
 
 #ifndef FIGTOOLS_GUI_THEME_HPP_
 #define FIGTOOLS_GUI_THEME_HPP_
@@ -23,33 +22,38 @@ class QWidget;
 
 namespace figtools::gui::theme {
 
-// Surfaces: neutral warm greys with a clear value hierarchy. The window is a
-// touch darker than the panels so docked areas read as separate plates.
-inline constexpr const char* kBase = "#EAE6DE";        // window / ribbon background
-inline constexpr const char* kPanel = "#F7F5F0";       // docked panels
-inline constexpr const char* kSurface = "#FFFFFF";     // cards, inputs, list rows
-inline constexpr const char* kCanvas = "#2A2E2B";      // behind the image (dark for fidelity)
-inline constexpr const char* kHover = "#EFEAE0";
-inline constexpr const char* kLine = "#DCD6C9";
-inline constexpr const char* kLineStrong = "#C6BEAE";
+enum class Mode { kWarm, kCool };
 
-// Type: warm near-black, never pure black.
-inline constexpr const char* kText = "#23211C";
-inline constexpr const char* kTextDim = "#655F53";
-inline constexpr const char* kTextFaint = "#918A7C";
-inline constexpr const char* kTextGhost = "#B7B0A1";
+// The active palette is process-global. Switching calls apply() again so the
+// QSS and QPalette are rebuilt from the new colours.
+void set_mode(Mode mode);
+[[nodiscard]] Mode mode();
+[[nodiscard]] QString mode_name();
 
-// One accent. Used only for active tab, selection, primary button and the
-// filled portion of a slider.
-inline constexpr const char* kAccent = "#B4562A";
-inline constexpr const char* kAccentSoft = "#F5E5D9";
-inline constexpr const char* kAccentInk = "#7A3A16";
-inline constexpr const char* kWarning = "#A9781A";
-inline constexpr const char* kDanger = "#A33A32";
-inline constexpr const char* kSuccess = "#4F7A4A";
-inline constexpr const char* kInfo = "#3F6E8C";
+// Semantic colour keys. Values are resolved by colour() against the active
+// palette, so callers never hard-code a hex colour.
+inline constexpr const char* kBase = "base";
+inline constexpr const char* kPanel = "panel";
+inline constexpr const char* kSurface = "surface";
+inline constexpr const char* kCanvas = "canvas";
+inline constexpr const char* kHover = "hover";
+inline constexpr const char* kLine = "line";
+inline constexpr const char* kLineStrong = "line_strong";
+inline constexpr const char* kText = "text";
+inline constexpr const char* kTextDim = "text_dim";
+inline constexpr const char* kTextFaint = "text_faint";
+inline constexpr const char* kTextGhost = "text_ghost";
+inline constexpr const char* kAccent = "accent";
+inline constexpr const char* kAccentSoft = "accent_soft";
+inline constexpr const char* kAccentInk = "accent_ink";
+inline constexpr const char* kWarning = "warning";
+inline constexpr const char* kDanger = "danger";
+inline constexpr const char* kSuccess = "success";
+inline constexpr const char* kInfo = "info";
 
-[[nodiscard]] QColor colour(const char* hex);
+// Resolves a semantic key (or a literal #hex for backwards compatibility).
+[[nodiscard]] QColor colour(const char* key);
+[[nodiscard]] QColor colour(const QString& key);
 
 void apply(QApplication& app);
 [[nodiscard]] QString style_sheet();
@@ -57,21 +61,18 @@ void apply(QApplication& app);
 [[nodiscard]] QFont ui_font(int pixel_size, int weight = QFont::Normal);
 [[nodiscard]] QFont mono_font(int pixel_size, int weight = QFont::Normal);
 
-// Caption above a group of rows (letter spacing set through QFont).
 [[nodiscard]] QLabel* section_label(const QString& text, QWidget* parent);
 [[nodiscard]] QWidget* hairline(QWidget* parent);
-
-// A docked-panel title bar: "项目" with a small trailing action.
 [[nodiscard]] QWidget* dock_title(const QString& text, QWidget* parent);
 
 enum class Glyph {
   kOpen, kSave, kExport, kSample, kFit, kActual, kSplit, kSide, kResult,
-  kMore, kPlus, kUndo, kRedo,
+  kMore, kPlus, kUndo, kRedo, kTheme,
   kFolder, kImage, kLayers, kAnnotate, kDataset, kModel, kTrain, kDetect,
   kSettings, kChevron, kSearch, kPlay, kStop, kBatch,
 };
 
-[[nodiscard]] QIcon icon(Glyph glyph, const QColor& tint = QColor(0x65, 0x5F, 0x53), int size = 16);
+[[nodiscard]] QIcon icon(Glyph glyph, const QColor& tint = colour(kTextDim), int size = 16);
 
 }  // namespace figtools::gui::theme
 

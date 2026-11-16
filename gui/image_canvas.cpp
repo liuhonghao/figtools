@@ -259,6 +259,59 @@ void ImageCanvas::drawDetections(QPainter& painter) {
   painter.restore();
 }
 
+void ImageCanvas::setSegments(std::vector<Segment> segments) {
+  segments_ = std::move(segments);
+  update();
+}
+
+void ImageCanvas::clearSegments() {
+  segments_.clear();
+  update();
+}
+
+void ImageCanvas::drawSegments(QPainter& painter) {
+  if (segments_.empty() || after_.isNull()) {
+    return;
+  }
+  const QRectF target = displayedImageRect();
+  if (target.isEmpty()) {
+    return;
+  }
+  const double sx = target.width() / static_cast<double>(after_.width());
+  const double sy = target.height() / static_cast<double>(after_.height());
+  painter.setRenderHint(QPainter::Antialiasing, true);
+  for (const Segment& segment : segments_) {
+    if (segment.polygon.size() < 3) {
+      continue;
+    }
+    QPolygonF polygon;
+    polygon.reserve(static_cast<qsizetype>(segment.polygon.size()));
+    for (const QPointF& point : segment.polygon) {
+      polygon << QPointF(target.left() + static_cast<double>(point.x()) * sx,
+                         target.top() + static_cast<double>(point.y()) * sy);
+    }
+    QColor fill = theme::colour(theme::kInfo);
+    fill.setAlpha(52);
+    painter.setPen(QPen(theme::colour(theme::kInfo), 1.6));
+    painter.setBrush(fill);
+    painter.drawPolygon(polygon);
+
+    const QRectF bounds = polygon.boundingRect();
+    const QString label = QStringLiteral("%1 %2%")
+                              .arg(segment.label)
+                              .arg(segment.confidence * 100.0, 0, 'f', 0);
+    painter.setFont(theme::ui_font(10, QFont::DemiBold));
+    const int text_width = painter.fontMetrics().horizontalAdvance(label) + 12;
+    const QRectF tag(bounds.left(), std::max(0.0, bounds.top() - 18.0), text_width, 17);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(theme::colour(theme::kInfo));
+    painter.drawRoundedRect(tag, 3, 3);
+    painter.setPen(QColor(255, 255, 255));
+    painter.drawText(tag, Qt::AlignCenter, label);
+  }
+  painter.setRenderHint(QPainter::Antialiasing, false);
+}
+
 void ImageCanvas::drawEmptyState(QPainter& painter) {
   const QRectF box = QRectF(rect()).adjusted(60, 60, -60, -60);
   QPen pen(theme::colour("#D2C5AE"));
@@ -504,6 +557,7 @@ void ImageCanvas::paintEvent(QPaintEvent* event) {
 
   drawAnnotations(painter);
   drawDetections(painter);
+  drawSegments(painter);
 
   // Corner chips: dark glass, one accent dot, no drop shadow.
   const auto chip = [&painter](QPointF top_left, const QString& text, const QColor& dot,

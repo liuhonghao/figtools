@@ -5,6 +5,7 @@
 
 #include <QApplication>
 #include <QCloseEvent>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -106,6 +107,39 @@ void TrainDialog::buildUi(const QString& data_hint) {
   task_row->addStretch(1);
   grid->addWidget(field_label(tr("任务")), 0, 0);
   grid->addLayout(task_row, 0, 1, 1, 2);
+
+  yolo_version_combo_ = new QComboBox(this);
+  const auto add_yolo = [this](const QString& label, const QString& value) {
+    yolo_version_combo_->addItem(label, value);
+  };
+  add_yolo(tr("YOLO26n · 最新（推荐）"), QStringLiteral("yolo26n"));
+  add_yolo(tr("YOLO26s"), QStringLiteral("yolo26s"));
+  add_yolo(tr("YOLO26m"), QStringLiteral("yolo26m"));
+  add_yolo(tr("YOLO26l"), QStringLiteral("yolo26l"));
+  add_yolo(tr("YOLO12n"), QStringLiteral("yolo12n"));
+  add_yolo(tr("YOLO11n · 稳定"), QStringLiteral("yolo11n"));
+  add_yolo(tr("YOLO11s"), QStringLiteral("yolo11s"));
+  add_yolo(tr("YOLO11m"), QStringLiteral("yolo11m"));
+  add_yolo(tr("YOLOv8n"), QStringLiteral("yolov8n"));
+  add_yolo(tr("YOLOv8s"), QStringLiteral("yolov8s"));
+  add_yolo(tr("YOLOv10n"), QStringLiteral("yolov10n"));
+  add_yolo(tr("YOLOv9c"), QStringLiteral("yolov9c"));
+  add_yolo(tr("YOLOv5nu"), QStringLiteral("yolov5nu"));
+  add_yolo(tr("YOLOv3-tiny"), QStringLiteral("yolov3-tiny"));
+  yolo_version_combo_->setFixedWidth(230);
+  yolo_from_scratch_ = new QCheckBox(tr("从零训练"), this);
+  yolo_from_scratch_->setToolTip(
+      tr("勾选：用本地模型结构从零训练，无需下载权重但收敛慢；"
+         "不勾选：尝试加载预训练权重（需联网，收敛快）"));
+  yolo_from_scratch_->setChecked(true);
+  auto* yolo_row = new QHBoxLayout();
+  yolo_row->setSpacing(8);
+  yolo_row->addWidget(yolo_version_combo_);
+  yolo_row->addWidget(yolo_from_scratch_);
+  yolo_row->addStretch(1);
+  grid->addWidget(field_label(tr("YOLO 版本")), 1, 0);
+  grid->addLayout(yolo_row, 1, 1, 1, 2);
+
   connect(task_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           [this]() { applyTaskDefaults(); });
 
@@ -113,17 +147,17 @@ void TrainDialog::buildUi(const QString& data_hint) {
   data_edit_->setPlaceholderText(tr("数据目录（每类一个子文件夹）"));
   auto* data_button = new QPushButton(tr("浏览…"), this);
   data_button->setFixedWidth(68);
-  grid->addWidget(field_label(tr("数据目录")), 1, 0);
-  grid->addWidget(data_edit_, 1, 1);
-  grid->addWidget(data_button, 1, 2);
+  grid->addWidget(field_label(tr("数据目录")), 2, 0);
+  grid->addWidget(data_edit_, 2, 1);
+  grid->addWidget(data_button, 2, 2);
 
   output_edit_ = new QLineEdit(this);
   output_edit_->setPlaceholderText(tr("模型包输出目录"));
   auto* output_button = new QPushButton(tr("浏览…"), this);
   output_button->setFixedWidth(68);
-  grid->addWidget(field_label(tr("模型输出")), 2, 0);
-  grid->addWidget(output_edit_, 2, 1);
-  grid->addWidget(output_button, 2, 2);
+  grid->addWidget(field_label(tr("模型输出")), 3, 0);
+  grid->addWidget(output_edit_, 3, 1);
+  grid->addWidget(output_button, 3, 2);
 
   arch_combo_ = new QComboBox(this);
   arch_combo_->addItem(QStringLiteral("ResNet-18"), QStringLiteral("resnet18"));
@@ -143,8 +177,8 @@ void TrainDialog::buildUi(const QString& data_hint) {
   arch_row->addWidget(inline_label(tr("输入")));
   arch_row->addWidget(input_spin_);
   arch_row->addStretch(1);
-  grid->addWidget(field_label(tr("模型")), 3, 0);
-  grid->addLayout(arch_row, 3, 1, 1, 2);
+  grid->addWidget(field_label(tr("模型")), 4, 0);
+  grid->addLayout(arch_row, 4, 1, 1, 2);
 
   epochs_spin_ = new QSpinBox(this);
   epochs_spin_->setRange(1, 1000);
@@ -171,8 +205,8 @@ void TrainDialog::buildUi(const QString& data_hint) {
   optim_row->addWidget(inline_label(tr("学习率")));
   optim_row->addWidget(lr_spin_);
   optim_row->addStretch(1);
-  grid->addWidget(field_label(tr("优化")), 4, 0);
-  grid->addLayout(optim_row, 4, 1, 1, 2);
+  grid->addWidget(field_label(tr("优化")), 5, 0);
+  grid->addLayout(optim_row, 5, 1, 1, 2);
 
   device_combo_ = new QComboBox(this);
   device_combo_->addItem(tr("自动"), QStringLiteral("auto"));
@@ -183,15 +217,15 @@ void TrainDialog::buildUi(const QString& data_hint) {
   device_row->setSpacing(8);
   device_row->addWidget(device_combo_);
   device_row->addStretch(1);
-  grid->addWidget(field_label(tr("设备")), 5, 0);
-  grid->addLayout(device_row, 5, 1, 1, 2);
+  grid->addWidget(field_label(tr("设备")), 6, 0);
+  grid->addLayout(device_row, 6, 1, 1, 2);
 
   python_edit_ = new QLineEdit(this);
   auto* python_button = new QPushButton(tr("浏览…"), this);
   python_button->setFixedWidth(68);
-  grid->addWidget(field_label(tr("Python")), 6, 0);
-  grid->addWidget(python_edit_, 6, 1);
-  grid->addWidget(python_button, 6, 2);
+  grid->addWidget(field_label(tr("Python")), 7, 0);
+  grid->addWidget(python_edit_, 7, 1);
+  grid->addWidget(python_button, 7, 2);
 
   root->addLayout(grid);
 
@@ -254,6 +288,10 @@ void TrainDialog::buildUi(const QString& data_hint) {
   if (const int index = task_combo_->findData(saved_task); index >= 0) {
     task_combo_->setCurrentIndex(index);
   }
+  const QString saved_yolo = settings.value(QStringLiteral("train/yolo_version"), QStringLiteral("yolo26n")).toString();
+  if (const int index = yolo_version_combo_->findData(saved_yolo); index >= 0) {
+    yolo_version_combo_->setCurrentIndex(index);
+  }
   applyTaskDefaults();
   const QString arch = settings.value(QStringLiteral("train/arch"), QStringLiteral("resnet18")).toString();
   if (const int index = arch_combo_->findData(arch); index >= 0) {
@@ -287,7 +325,21 @@ bool TrainDialog::isDetection() const {
 }
 
 void TrainDialog::applyTaskDefaults() {
-  if (taskKind() == QLatin1String("yolo")) {
+  const bool yolo_task = taskKind() == QLatin1String("yolo");
+  if (yolo_version_combo_ != nullptr) {
+    yolo_version_combo_->setVisible(yolo_task);
+    yolo_from_scratch_->setVisible(yolo_task);
+  }
+  // The architecture combo only applies to classifiers; YOLO uses its own
+  // version selector and the patch baseline always uses the small CNN.
+  if (arch_combo_ != nullptr) {
+    arch_combo_->setEnabled(!yolo_task);
+    const int patch_index = arch_combo_->findData(QStringLiteral("smallcnn"));
+    if (taskKind() == QLatin1String("detector") && patch_index >= 0) {
+      arch_combo_->setCurrentIndex(patch_index);
+    }
+  }
+  if (yolo_task) {
     data_edit_->setPlaceholderText(tr("数据集快照目录（含 dataset.json 与标注框）"));
     input_spin_->setValue(640);
     epochs_spin_->setValue(50);
@@ -381,7 +433,12 @@ void TrainDialog::start() {
   job.insert(QStringLiteral("val_ratio"), 0.2);
   if (kind == QLatin1String("yolo")) {
     job.insert(QStringLiteral("imgsz"), input_spin_->value());
-    job.insert(QStringLiteral("variant"), QStringLiteral("yolo11n.pt"));
+    const QString version = yolo_version_combo_->currentData().toString();
+    // From scratch uses the local YAML (no download); otherwise ask for the
+    // pretrained .pt (needs network and converges in far fewer epochs).
+    job.insert(QStringLiteral("variant"),
+               yolo_from_scratch_->isChecked() ? version + QStringLiteral(".yaml")
+                                              : version + QStringLiteral(".pt"));
   } else if (kind == QLatin1String("detector")) {
     job.insert(QStringLiteral("patch_size"), input_spin_->value());
     job.insert(QStringLiteral("positives_per_box"), 3);
@@ -401,6 +458,7 @@ void TrainDialog::start() {
   settings.setValue(QStringLiteral("train/data"), data);
   settings.setValue(QStringLiteral("train/output"), output);
   settings.setValue(QStringLiteral("train/detail_task"), task_combo_->currentData());
+  settings.setValue(QStringLiteral("train/yolo_version"), yolo_version_combo_->currentData());
   settings.setValue(QStringLiteral("train/arch"), arch_combo_->currentData());
   settings.setValue(QStringLiteral("train/input"), input_spin_->value());
   settings.setValue(QStringLiteral("train/epochs"), epochs_spin_->value());

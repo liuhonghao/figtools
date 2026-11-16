@@ -3,6 +3,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QSettings>
 #include <QDir>
 #include <QMenu>
 #include <QTabWidget>
@@ -14,7 +15,7 @@
 #include "theme.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.2.0"
+#define FIGTOOLS_VERSION "1.3.0"
 #endif
 
 int main(int argc, char** argv) {
@@ -23,6 +24,18 @@ int main(int argc, char** argv) {
   QApplication::setApplicationVersion(QStringLiteral(FIGTOOLS_VERSION));
   QApplication::setOrganizationName(QStringLiteral("figtools"));
 
+  {
+    QSettings settings;
+    QString saved = settings.value(QStringLiteral("ui/theme"), QStringLiteral("暖色")).toString();
+    const QStringList args = app.arguments();
+    const int theme_index = args.indexOf(QStringLiteral("--theme"));
+    if (theme_index >= 0 && theme_index + 1 < args.size()) {
+      saved = args.at(theme_index + 1);
+    }
+    figtools::gui::theme::set_mode(saved == QStringLiteral("冷色") || saved == QStringLiteral("cool")
+                                       ? figtools::gui::theme::Mode::kCool
+                                       : figtools::gui::theme::Mode::kWarm);
+  }
   figtools::gui::theme::apply(app);
 
   figtools::gui::MainWindow window;
@@ -93,6 +106,13 @@ int main(int argc, char** argv) {
     }
     window.openBatchInferDialog(directory);
     return 0;
+  }
+
+  const int segment_index = arguments.indexOf(QStringLiteral("--demo-segment"));
+  if (segment_index >= 0 && segment_index + 1 < arguments.size()) {
+    const QString directory = arguments.at(segment_index + 1);
+    QTimer::singleShot(500, &window, [&window, directory]() { window.loadModel(directory); });
+    QTimer::singleShot(1000, &window, [&window]() { window.runSegmentation(); });
   }
 
   const int detect_index = arguments.indexOf(QStringLiteral("--demo-detect"));

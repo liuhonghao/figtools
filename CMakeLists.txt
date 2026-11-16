@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(figtools
-  VERSION 1.2.0
+  VERSION 1.3.0
   DESCRIPTION "Image processing workbench: deterministic pipelines, operator registry, CLI"
   HOMEPAGE_URL "https://github.com/liuhonghao/figtools"
   LANGUAGES CXX
@@ -38,6 +38,7 @@ add_library(ft_core STATIC
   src/core/color.cpp
   src/core/hash.cpp
   src/core/metrics.cpp
+  src/core/pyramid.cpp
   src/core/sample_scene.cpp
 )
 target_include_directories(ft_core PUBLIC
@@ -171,6 +172,8 @@ if(FIGTOOLS_BUILD_GUI)
     gui/train_dialog.hpp
     gui/python_env.cpp
     gui/python_env.hpp
+    gui/inference_client.cpp
+    gui/inference_client.hpp
   )
   target_include_directories(figtools_gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gui)
   target_compile_definitions(figtools_gui PRIVATE FIGTOOLS_VERSION="${PROJECT_VERSION}")

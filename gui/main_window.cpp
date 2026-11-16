@@ -72,7 +72,7 @@
 #include "widgets.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.2.0"
+#define FIGTOOLS_VERSION "1.3.0"
 #endif
 
 namespace figtools::gui {
@@ -128,7 +128,7 @@ QFrame* vertical_rule(QWidget* parent) {
   auto* rule = new QFrame(parent);
   rule->setFixedWidth(1);
   rule->setMinimumHeight(18);
-  rule->setStyleSheet(QStringLiteral("background:%1; border:none;").arg(theme::kLine));
+  rule->setStyleSheet(QStringLiteral("background:%1; border:none;").arg(theme::colour(theme::kLine).name()));
   return rule;
 }
 
@@ -148,6 +148,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   setWindowTitle(tr("figtools — 图像工作台"));
   resize(1440, 900);
   setAcceptDrops(true);
+
+  inference_ = std::make_unique<InferenceClient>();
 
   QSettings settings;
   if (settings.contains(QStringLiteral("window/geometry"))) {
@@ -281,6 +283,10 @@ void MainWindow::buildActions() {
   auto* detect_action = model_menu->addAction(tr("检测当前图像"));
   detect_action->setShortcut(QKeySequence(QStringLiteral("Ctrl+D")));
   connect(detect_action, &QAction::triggered, this, &MainWindow::runDetection);
+  auto* segment_action = model_menu->addAction(tr("实例分割当前图像"));
+  connect(segment_action, &QAction::triggered, this, &MainWindow::runSegmentation);
+  auto* ocr_action = model_menu->addAction(tr("OCR 识别当前图像"));
+  connect(ocr_action, &QAction::triggered, this, &MainWindow::runOCR);
   auto* batch_infer_action = model_menu->addAction(tr("批量推理…"));
   batch_infer_action->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+R")));
   connect(batch_infer_action, &QAction::triggered, this,
@@ -446,7 +452,7 @@ void MainWindow::buildUi() {
   const auto separator = [this]() {
     auto* rule = new QFrame(this);
     rule->setFixedSize(1, 11);
-    rule->setStyleSheet(QStringLiteral("background:%1;").arg(theme::kLine));
+    rule->setStyleSheet(QStringLiteral("background:%1;").arg(theme::colour(theme::kLine).name()));
     return rule;
   };
 
@@ -481,7 +487,7 @@ void MainWindow::buildTopBar(QVBoxLayout* outer) {
 
   auto* mark = new QLabel(bar);
   mark->setFixedSize(8, 8);
-  mark->setStyleSheet(QStringLiteral("background:%1; border-radius:2px;").arg(theme::kAccent));
+  mark->setStyleSheet(QStringLiteral("background:%1; border-radius:2px;").arg(theme::colour(theme::kAccent).name()));
   auto* brand = new QLabel(QStringLiteral("figtools"), bar);
   brand->setObjectName(QStringLiteral("Brand"));
   brand->setFont(theme::ui_font(13, QFont::DemiBold));
@@ -519,6 +525,12 @@ void MainWindow::buildTopBar(QVBoxLayout* outer) {
   connect(redo_button_, &QToolButton::clicked, this, &MainWindow::redoRecipe);
   layout->addWidget(undo_button_);
   layout->addWidget(redo_button_);
+  layout->addSpacing(2);
+  theme_button_ = new QToolButton(bar);
+  theme_button_->setIcon(theme::icon(theme::Glyph::kTheme));
+  theme_button_->setToolTip(tr("切换界面主题（暖色 / 冷色）"));
+  connect(theme_button_, &QToolButton::clicked, this, &MainWindow::toggleTheme);
+  layout->addWidget(theme_button_);
   layout->addStretch(1);
 
   auto* meta = new QLabel(tr("图像全流程工作台"), bar);
@@ -732,6 +744,7 @@ QWidget* MainWindow::buildRibbonPage(int page_index) {
             {QT_TR_NOOP("实际像素"), theme::Glyph::kActual, true, [this]() {
                if (canvas_ != nullptr) { canvas_->zoomToActualSize(); }
              }},
+            {QT_TR_NOOP("切换主题"), theme::Glyph::kTheme, true, [this]() { toggleTheme(); }},
         }},
     };
   }
@@ -771,7 +784,7 @@ QWidget* MainWindow::buildRibbonPage(int page_index) {
       auto* rule = new QFrame(page);
       rule->setFixedWidth(1);
       rule->setFixedHeight(52);
-      rule->setStyleSheet(QStringLiteral("background:%1;").arg(theme::kLine));
+      rule->setStyleSheet(QStringLiteral("background:%1;").arg(theme::colour(theme::kLine).name()));
       layout->addSpacing(8);
       layout->addWidget(rule);
       layout->addSpacing(8);
@@ -844,6 +857,26 @@ void MainWindow::updateHistoryActions() {
     redo_button_->setEnabled(can_redo);
     redo_button_->setToolTip(can_redo ? tr("重做 %1").arg(redo_label) : tr("没有可重做的操作"));
   }
+}
+
+void MainWindow::toggleTheme() {
+  const theme::Mode next = theme::mode() == theme::Mode::kWarm ? theme::Mode::kCool
+                                                              : theme::Mode::kWarm;
+  theme::set_mode(next);
+  QSettings settings;
+  settings.setValue(QStringLiteral("ui/theme"), theme::mode_name());
+  qApp->setPalette(QPalette());
+  theme::apply(*qApp);
+  // Force every widget to re-polish with the new QSS.
+  for (QWidget* widget : QApplication::allWidgets()) {
+    widget->style()->unpolish(widget);
+    widget->style()->polish(widget);
+    widget->update();
+  }
+  if (theme_button_ != nullptr) {
+    theme_button_->setToolTip(tr("当前：%1 · 点击切换").arg(theme::mode_name()));
+  }
+  notify(tr("已切换到%1主题").arg(theme::mode_name()), 2500);
 }
 
 void MainWindow::prepareForCapture() {
@@ -2224,6 +2257,7 @@ void MainWindow::loadModel(const QString& directory) {
   if (canvas_ != nullptr) {
     canvas_->clearInferenceResult();
     canvas_->clearDetections();
+    canvas_->clearSegments();
   }
 
   QSettings settings;
@@ -2245,8 +2279,9 @@ void MainWindow::refreshModelPanel() {
           : QStringLiteral("—");
   model_list_->set_rows({
       {tr("模型"), QFileInfo(model_dir_).fileName()},
-      {tr("类型"), model_kind_ == QLatin1String("yolo") ? tr("YOLO 检测")
-                   : (model_kind_ == QLatin1String("detector") ? tr("检测") : tr("分类"))},
+      {tr("类型"), model_kind_ == QLatin1String("yolo-seg") ? tr("YOLO 分割")
+                   : (model_kind_ == QLatin1String("yolo") ? tr("YOLO 检测")
+                   : (model_kind_ == QLatin1String("detector") ? tr("检测") : tr("分类")))},
       {tr("架构"), QStringLiteral("%1 · %2 px").arg(model_arch_).arg(model_input_)},
       {tr("类别"), QString::number(model_classes_)},
       {tr("验证"), model_val_ >= 0.0 ? QString::number(model_val_, 'f', 3) : QStringLiteral("—")},
@@ -2254,6 +2289,125 @@ void MainWindow::refreshModelPanel() {
       {tr("置信度"), confidence},
       {tr("次优"), prediction_second_.isEmpty() ? QStringLiteral("—") : prediction_second_},
   });
+}
+
+void MainWindow::runOCR() {
+  if (source_.empty()) {
+    notify(tr("没有可识别的图像"), 3000);
+    return;
+  }
+  QString image_path = source_path_;
+  if (image_path.isEmpty()) {
+    if (!inference_temp_) {
+      inference_temp_ = std::make_unique<QTemporaryDir>();
+    }
+    image_path = inference_temp_->filePath(QStringLiteral("ocr_current.png"));
+    if (auto saved = save_image(source_, image_path.toStdString()); !saved) {
+      QMessageBox::warning(this, tr("识别失败"), error_text(saved.error()));
+      return;
+    }
+  }
+  setBusy(true, tr("OCR 识别中…"));
+  QString error;
+  QJsonObject fields;
+  fields.insert(QStringLiteral("image"), image_path);
+  const QJsonObject result = inference_->request(QStringLiteral("ocr"), fields, &error, 180000);
+  setBusy(false);
+  if (!error.isEmpty()) {
+    QMessageBox::warning(this, tr("OCR 不可用"),
+                         tr("%1\n\n请安装 OCR 组件：pip install rapidocr-onnxruntime").arg(error));
+    return;
+  }
+  const QJsonArray texts = result.value(QStringLiteral("texts")).toArray();
+  std::vector<ImageCanvas::Detection> boxes;
+  boxes.reserve(static_cast<std::size_t>(texts.size()));
+  QString joined;
+  for (const QJsonValue& value : texts) {
+    const QJsonObject item = value.toObject();
+    ImageCanvas::Detection detection;
+    detection.label = item.value(QStringLiteral("text")).toString();
+    detection.confidence = item.value(QStringLiteral("confidence")).toDouble();
+    detection.box = QRectF(item.value(QStringLiteral("x")).toDouble(),
+                           item.value(QStringLiteral("y")).toDouble(),
+                           item.value(QStringLiteral("w")).toDouble(),
+                           item.value(QStringLiteral("h")).toDouble());
+    boxes.push_back(std::move(detection));
+    if (!joined.isEmpty()) {
+      joined += QStringLiteral(" ");
+    }
+    joined += detection.label;
+  }
+  if (canvas_ != nullptr) {
+    canvas_->clearSegments();
+    canvas_->clearDetections();
+    canvas_->setDetections(std::move(boxes));
+  }
+  prediction_label_ = texts.isEmpty() ? tr("未识别到文字") : tr("%1 处文字").arg(texts.size());
+  prediction_confidence_ = -1.0;
+  prediction_second_.clear();
+  refreshModelPanel();
+  notify(tr("OCR：%1").arg(joined.left(80)), 6000);
+}
+
+void MainWindow::runSegmentation() {
+  if (source_.empty()) {
+    notify(tr("没有可分割的图像"), 3000);
+    return;
+  }
+  if (model_kind_ != QLatin1String("yolo-seg")) {
+    QMessageBox::information(this, tr("模型类型不符"),
+                             tr("当前不是分割模型。请用「训练模型 → 目标检测」并选择 YOLO-seg 版本训练。"));
+    return;
+  }
+  QString image_path = source_path_;
+  if (image_path.isEmpty()) {
+    if (!inference_temp_) {
+      inference_temp_ = std::make_unique<QTemporaryDir>();
+    }
+    image_path = inference_temp_->filePath(QStringLiteral("segment_current.png"));
+    if (auto saved = save_image(source_, image_path.toStdString()); !saved) {
+      QMessageBox::warning(this, tr("分割失败"), error_text(saved.error()));
+      return;
+    }
+  }
+  setBusy(true, tr("分割中…"));
+  QString error;
+  QJsonObject fields;
+  fields.insert(QStringLiteral("model"), model_dir_);
+  fields.insert(QStringLiteral("image"), image_path);
+  fields.insert(QStringLiteral("conf"), 0.25);
+  const QJsonObject result = inference_->request(QStringLiteral("segment"), fields, &error, 180000);
+  setBusy(false);
+  if (!error.isEmpty()) {
+    QMessageBox::warning(this, tr("分割失败"), error);
+    return;
+  }
+  const QJsonArray instances = result.value(QStringLiteral("instances")).toArray();
+  std::vector<ImageCanvas::Segment> segments;
+  segments.reserve(static_cast<std::size_t>(instances.size()));
+  for (const QJsonValue& value : instances) {
+    const QJsonObject item = value.toObject();
+    ImageCanvas::Segment segment;
+    segment.label = item.value(QStringLiteral("label")).toString();
+    segment.confidence = item.value(QStringLiteral("confidence")).toDouble();
+    for (const QJsonValue& point : item.value(QStringLiteral("polygon")).toArray()) {
+      const QJsonArray pair = point.toArray();
+      if (pair.size() == 2) {
+        segment.polygon.emplace_back(pair.at(0).toDouble(), pair.at(1).toDouble());
+      }
+    }
+    segments.push_back(std::move(segment));
+  }
+  const int count = static_cast<int>(segments.size());
+  if (canvas_ != nullptr) {
+    canvas_->clearDetections();
+    canvas_->setSegments(std::move(segments));
+  }
+  prediction_label_ = count == 0 ? tr("未检出") : tr("%1 个实例").arg(count);
+  prediction_confidence_ = -1.0;
+  prediction_second_.clear();
+  refreshModelPanel();
+  notify(tr("分割出 %1 个实例").arg(count), 5000);
 }
 
 void MainWindow::runDetection() {
@@ -2385,44 +2539,18 @@ void MainWindow::runInference() {
     }
   }
 
-  const QString python =
-      QSettings().value(QStringLiteral("python/executable"), resolve_python()).toString();
-  const QString scripts = python_scripts_dir();
-
   setBusy(true, tr("推理中…"));
-  QProcess process;
-  process.setWorkingDirectory(scripts);
-  process.setProcessChannelMode(QProcess::SeparateChannels);
-  process.start(python, {QStringLiteral("predict.py"), QStringLiteral("--model"), model_dir_,
-                         QStringLiteral("--image"), image_path, QStringLiteral("--topk"),
-                         QStringLiteral("3")});
-  const bool started = process.waitForStarted(5000);
-  const bool finished = started && process.waitForFinished(180000);
+  QString error;
+  QJsonObject fields;
+  fields.insert(QStringLiteral("model"), model_dir_);
+  fields.insert(QStringLiteral("image"), image_path);
+  fields.insert(QStringLiteral("topk"), 3);
+  const QJsonObject result = inference_->request(QStringLiteral("classify"), fields, &error, 180000);
   setBusy(false);
-
-  if (!started) {
-    QMessageBox::warning(this, tr("无法启动 Python"), process.errorString());
+  if (!error.isEmpty()) {
+    QMessageBox::warning(this, tr("推理失败"), error);
     return;
   }
-  if (!finished) {
-    process.kill();
-    QMessageBox::warning(this, tr("推理超时"), tr("推理进程在 3 分钟内没有返回。"));
-    return;
-  }
-  if (process.exitCode() != 0) {
-    const QString message = QString::fromUtf8(process.readAllStandardError()).trimmed();
-    QMessageBox::warning(this, tr("推理失败"),
-                         message.isEmpty() ? tr("推理进程返回 %1").arg(process.exitCode())
-                                           : message.right(800));
-    return;
-  }
-
-  const QJsonDocument document = QJsonDocument::fromJson(process.readAllStandardOutput());
-  if (!document.isObject()) {
-    QMessageBox::warning(this, tr("推理失败"), tr("推理脚本没有返回 JSON。"));
-    return;
-  }
-  const QJsonObject result = document.object();
   prediction_label_ = result.value(QStringLiteral("label")).toString();
   prediction_confidence_ = result.value(QStringLiteral("confidence")).toDouble(-1.0);
   const QJsonArray topk = result.value(QStringLiteral("topk")).toArray();
