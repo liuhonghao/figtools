@@ -1,0 +1,59 @@
+name: Bug report
+description: 报告可复现的缺陷
+title: "fix: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请尽量给出**最小复现**：一条命令 + 一份配方，比十张截图有用。
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 运行 `figtools version` 的输出
+      placeholder: "figtools 0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: 平台
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 命令、配方 JSON、输入图像的特征（尺寸/格式）
+      placeholder: |
+        1. figtools demo -o out --size 640x480
+        2. figtools apply -i out/before.png -o x.png -r out/recipe.json
+        3. 观察 x.png 左上角出现黑边
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 附完整错误输出（不只是最后一行）
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息
+      description: 是否与图片尺寸、通道、位深相关？是否只在大图上出现？
+    validations:
+      required: false

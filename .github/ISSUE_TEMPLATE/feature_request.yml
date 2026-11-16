@@ -1,0 +1,45 @@
+name: Feature request
+description: 提出新算子、新能力或流程改进
+title: "feat: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        新算子请说明它属于哪个分组（geometry / color / filter / analysis），
+        以及它的参数应该有哪些——参数最终要进 schema，这决定了界面上会出现什么控件。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决什么问题
+      description: 描述使用场景，而不是直接给方案
+      placeholder: 巡检图里有周期性网纹，现有算子去不掉，导致阈值分割误检
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 算子名、算法、参数（名称/类型/范围/默认值/单位）
+      placeholder: |
+        notch_filter（filter）
+          freq     number  1..200   default 50  单位 Hz
+          width    number  0.5..20  default 3   单位 Hz
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 考虑过的替代方案
+    validations:
+      required: false
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: 是否影响已有配方
+      options:
+        - 不影响（新增算子）
+        - 影响（修改算子行为，需要升 version）
+        - 不确定
+    validations:
+      required: true

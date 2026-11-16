@@ -1,0 +1,42 @@
+# Build output
+build/
+out/
+install/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+*.o
+*.obj
+*.exe
+*.dll
+*.lib
+*.a
+*.pdb
+*.ilk
+*.exp
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+compile_commands.json
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Runtime artifacts
+*.log
+/tmp/
+/demo_out/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Local secrets
+.env
+.env.local
