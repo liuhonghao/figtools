@@ -3,6 +3,26 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.0] - 2026-11-16
+
+### Added
+
+- **ft_dataset**：目录扫描（图片 + `.annotations.json` 副车）、`DatasetStats`、
+  重复内容检测（文件内容哈希）、训练前检查（无标注 / 重复 / 类别缺失 / 验证集过小 /
+  孤立标注）。
+- **确定性三分划分**：`assign_split(train, val, test, seed, stratified)`，
+  采用在线取整（online rounding），保证每个 split 的计数与比例误差 ≤ 1，且分层时
+  各类别都被摊到三个集合；同一 seed 与同一文件列表必然得到同一划分。
+- **快照导出**：`images/`、`annotations/`、`splits/{train,val,test}.txt`、
+  `dataset.json`、`DATASET_CARD.md`（含统计与检查结论）。
+- **界面「数据集」页**：选择目录、比例/分层/种子控件、划分结果、检查列表、导出快照。
+- **标注页新增「存为数据集标注」**：直接写 `<image>.annotations.json`，与数据集页闭环。
+
+### Fixed
+
+- `Dataset::warnings()` 对空 `vector` 使用 `operator[]` 导致段错误，改为定长
+  `std::array<int, 3>`。该缺陷由新增的导出测试捕获。
+
 ## [0.3.0] - 2026-11-16
 
 ### Added

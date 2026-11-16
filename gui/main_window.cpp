@@ -254,12 +254,91 @@ void MainWindow::buildUi() {
   file_row->addWidget(load_anno);
   annotate_layout->addLayout(file_row);
 
+  auto* sidecar = new QPushButton(tr("存为数据集标注（.annotations.json）"), annotate_page);
+  sidecar->setToolTip(tr("写到图片旁边，数据集扫描会自动识别"));
+  annotate_layout->addWidget(sidecar);
+
   auto* hint = new QLabel(tr("矩形：拖拽绘制；多边形：逐点单击，双击或回车闭合，Esc 取消。"), annotate_page);
   hint->setWordWrap(true);
   hint->setStyleSheet("color:#8a8a7e; font-size:11px;");
   annotate_layout->addWidget(hint);
 
   tabs->addTab(annotate_page, tr("标注"));
+
+  auto* dataset_page = new QWidget(tabs);
+  auto* dataset_layout = new QVBoxLayout(dataset_page);
+  dataset_layout->setContentsMargins(10, 10, 10, 10);
+  dataset_layout->setSpacing(8);
+
+  auto* dataset_title = new QLabel(tr("数据集"), dataset_page);
+  dataset_title->setStyleSheet("color:#54544b; font-weight:bold;");
+  dataset_layout->addWidget(dataset_title);
+
+  auto* choose_dir = new QPushButton(tr("选择图片目录…"), dataset_page);
+  dataset_layout->addWidget(choose_dir);
+  dataset_path_ = QString();
+  dataset_stats_ = new QLabel(tr("尚未扫描"), dataset_page);
+  dataset_stats_->setTextFormat(Qt::RichText);
+  dataset_stats_->setWordWrap(true);
+  dataset_layout->addWidget(dataset_stats_);
+
+  auto* ratio_row = new QHBoxLayout();
+  train_ratio_ = new QDoubleSpinBox(dataset_page);
+  val_ratio_ = new QDoubleSpinBox(dataset_page);
+  test_ratio_ = new QDoubleSpinBox(dataset_page);
+  int column = 0;
+  for (const auto& [label_text, box] :
+       {std::pair{tr("训练 %"), train_ratio_}, std::pair{tr("验证 %"), val_ratio_},
+        std::pair{tr("测试 %"), test_ratio_}}) {
+    auto* cell = new QVBoxLayout();
+    auto* caption = new QLabel(label_text, dataset_page);
+    caption->setStyleSheet("color:#8a8a7e; font-size:11px;");
+    box->setRange(0.0, 100.0);
+    box->setDecimals(0);
+    box->setSingleStep(5.0);
+    box->setValue(column == 0 ? 70.0 : 15.0);
+    cell->addWidget(caption);
+    cell->addWidget(box);
+    ratio_row->addLayout(cell);
+    ++column;
+  }
+  dataset_layout->addLayout(ratio_row);
+
+  auto* option_row = new QHBoxLayout();
+  stratified_ = new QCheckBox(tr("按类别分层"), dataset_page);
+  stratified_->setChecked(true);
+  split_seed_ = new QSpinBox(dataset_page);
+  split_seed_->setRange(0, 999999);
+  split_seed_->setValue(2026);
+  option_row->addWidget(stratified_);
+  option_row->addStretch(1);
+  option_row->addWidget(new QLabel(tr("种子"), dataset_page));
+  option_row->addWidget(split_seed_);
+  dataset_layout->addLayout(option_row);
+
+  auto* split_button = new QPushButton(tr("划分数据集"), dataset_page);
+  dataset_layout->addWidget(split_button);
+  dataset_split_ = new QLabel(tr("—"), dataset_page);
+  dataset_split_->setTextFormat(Qt::RichText);
+  dataset_layout->addWidget(dataset_split_);
+
+  auto* warn_title = new QLabel(tr("数据检查"), dataset_page);
+  warn_title->setStyleSheet("color:#54544b; font-weight:bold;");
+  dataset_layout->addWidget(warn_title);
+  dataset_warnings_ = new QListWidget(dataset_page);
+  dataset_warnings_->setStyleSheet(
+      "QListWidget { background:#ffffff; border:1px solid #e9e5d8; border-radius:6px; font-size:11px; }"
+      "QListWidget::item { padding:4px 6px; }");
+  dataset_layout->addWidget(dataset_warnings_, 1);
+
+  auto* export_snapshot = new QPushButton(tr("导出数据集快照…"), dataset_page);
+  dataset_layout->addWidget(export_snapshot);
+
+  tabs->addTab(dataset_page, tr("数据集"));
+
+  connect(choose_dir, &QPushButton::clicked, this, &MainWindow::chooseDatasetDirectory);
+  connect(split_button, &QPushButton::clicked, this, &MainWindow::splitDataset);
+  connect(export_snapshot, &QPushButton::clicked, this, &MainWindow::exportDataset);
 
   connect(class_list_, &QListWidget::currentRowChanged, this, [this](int row) {
     if (row < 0 || static_cast<std::size_t>(row) >= annotations_.classes().size()) {
@@ -298,6 +377,7 @@ void MainWindow::buildUi() {
   connect(yolo_button, &QPushButton::clicked, this, [this]() { exportAnnotations(false); });
   connect(save_anno, &QPushButton::clicked, this, &MainWindow::saveAnnotations);
   connect(load_anno, &QPushButton::clicked, this, &MainWindow::loadAnnotations);
+  connect(sidecar, &QPushButton::clicked, this, &MainWindow::saveSidecar);
 
   // ---- centre: canvas ------------------------------------------------------
   canvas_ = new ImageCanvas(splitter);
@@ -1099,6 +1179,139 @@ void MainWindow::addDemoAnnotations() {
     canvas_->setSelectedIndex(0);
   }
   refreshAnnotationLists();
+}
+
+
+void MainWindow::saveSidecar() {
+  if (source_path_.isEmpty()) {
+    QMessageBox::information(this, tr("无法保存"),
+                             tr("示例图没有磁盘路径。请先打开一张真实图片再保存标注。"));
+    return;
+  }
+  const QString path = source_path_ + QStringLiteral(".annotations.json");
+  QFile file(path);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    QMessageBox::warning(this, tr("保存失败"), file.errorString());
+    return;
+  }
+  const std::string text = annotations_.to_json(2);
+  file.write(text.data(), static_cast<qint64>(text.size()));
+  statusBar()->showMessage(tr("已写入数据集标注：%1").arg(QFileInfo(path).fileName()), 5000);
+}
+
+void MainWindow::chooseDatasetDirectory() {
+  const QString directory =
+      QFileDialog::getExistingDirectory(this, tr("选择图片目录"), dataset_path_);
+  if (directory.isEmpty()) {
+    return;
+  }
+  auto scanned = Dataset::scan(directory.toStdString(), false);
+  if (!scanned) {
+    QMessageBox::warning(this, tr("扫描失败"), error_text(scanned.error()));
+    return;
+  }
+  dataset_ = std::move(scanned.value());
+  dataset_path_ = directory;
+  refreshDatasetUi();
+  statusBar()->showMessage(tr("已扫描 %1 张图片").arg(dataset_.size()), 4000);
+}
+
+void MainWindow::refreshDatasetUi() {
+  if (dataset_stats_ == nullptr) {
+    return;
+  }
+  const DatasetStats stats = dataset_.stats();
+  QString html = QStringLiteral("<table cellspacing='0' cellpadding='2'>");
+  html += tr("<tr><td style='color:#8a8a7e'>目录</td><td align='right'>%1</td></tr>")
+              .arg(dataset_path_.isEmpty() ? tr("—") : QFileInfo(dataset_path_).fileName());
+  html += tr("<tr><td style='color:#8a8a7e'>图片</td><td align='right'>%1</td></tr>")
+              .arg(stats.total);
+  html += tr("<tr><td style='color:#8a8a7e'>有标注</td><td align='right'>%1</td></tr>")
+              .arg(stats.with_annotations);
+  html += tr("<tr><td style='color:#8a8a7e'>重复组</td><td align='right'>%1</td></tr>")
+              .arg(stats.duplicate_groups);
+  html += QStringLiteral("</table>");
+  dataset_stats_->setText(html);
+
+  if (dataset_split_ != nullptr) {
+    dataset_split_->setText(tr("训练 %1 · 验证 %2 · 测试 %3")
+                                .arg(stats.per_split[0])
+                                .arg(stats.per_split[1])
+                                .arg(stats.per_split[2]));
+  }
+
+  if (dataset_warnings_ != nullptr) {
+    dataset_warnings_->clear();
+    const auto issues = dataset_.warnings();
+    if (issues.empty()) {
+      dataset_warnings_->addItem(tr("未发现明显问题"));
+    } else {
+      for (const DatasetWarning& warning : issues) {
+        dataset_warnings_->addItem(QString::fromStdString(warning.message));
+      }
+    }
+  }
+}
+
+void MainWindow::splitDataset() {
+  if (dataset_.size() == 0) {
+    QMessageBox::information(this, tr("没有数据"), tr("请先选择一个包含图片的目录。"));
+    return;
+  }
+  const double train = train_ratio_->value() / 100.0;
+  const double val = val_ratio_->value() / 100.0;
+  const double test = test_ratio_->value() / 100.0;
+  auto status = dataset_.assign_split(train, val, test,
+                                      static_cast<unsigned>(split_seed_->value()),
+                                      stratified_->isChecked());
+  if (!status) {
+    QMessageBox::warning(this, tr("划分失败"), error_text(status.error()));
+    return;
+  }
+  refreshDatasetUi();
+  statusBar()->showMessage(tr("划分完成：训练 %1 / 验证 %2 / 测试 %3")
+                               .arg(dataset_.count(Split::kTrain))
+                               .arg(dataset_.count(Split::kVal))
+                               .arg(dataset_.count(Split::kTest)),
+                           4000);
+}
+
+void MainWindow::exportDataset() {
+  if (dataset_.size() == 0) {
+    QMessageBox::information(this, tr("没有数据"), tr("请先扫描并划分数据集。"));
+    return;
+  }
+  const QString parent = QFileDialog::getExistingDirectory(this, tr("选择导出目录"));
+  if (parent.isEmpty()) {
+    return;
+  }
+  const QString name = QFileInfo(dataset_path_).fileName();
+  const QString target = parent + QLatin1Char('/') + name + QStringLiteral("-v1");
+  auto status = dataset_.export_snapshot(target.toStdString(), name.toStdString());
+  if (!status) {
+    QMessageBox::warning(this, tr("导出失败"), error_text(status.error()));
+    return;
+  }
+  statusBar()->showMessage(tr("数据集已导出到 %1").arg(target), 6000);
+}
+
+
+
+void MainWindow::loadDatasetDirectory(const QString& path) {
+  auto scanned = Dataset::scan(path.toStdString(), false);
+  if (!scanned) {
+    statusBar()->showMessage(error_text(scanned.error()), 5000);
+    return;
+  }
+  dataset_ = std::move(scanned.value());
+  dataset_path_ = path;
+  if (auto status = dataset_.assign_split(0.7, 0.15, 0.15, 2026U, true); !status) {
+    statusBar()->showMessage(error_text(status.error()), 5000);
+  }
+  refreshDatasetUi();
+  if (tabs_ != nullptr) {
+    tabs_->setCurrentIndex(2);
+  }
 }
 
 }  // namespace figtools::gui

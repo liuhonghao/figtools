@@ -73,6 +73,11 @@ int main(int argc, char** argv) {
   // Headless verification hook: render the window once and exit. Used by CI
   // and by the screenshot script so UI regressions produce a diffable artefact.
   const QStringList arguments = QApplication::arguments();
+  const int dataset_index = arguments.indexOf(QStringLiteral("--demo-dataset"));
+  if (dataset_index >= 0 && dataset_index + 1 < arguments.size()) {
+    const QString path = arguments.at(dataset_index + 1);
+    QTimer::singleShot(700, &window, [&window, path]() { window.loadDatasetDirectory(path); });
+  }
   if (arguments.contains(QStringLiteral("--demo-annotations"))) {
     QTimer::singleShot(600, &window, [&window]() { window.addDemoAnnotations(); });
   }

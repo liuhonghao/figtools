@@ -33,6 +33,7 @@
 | `ft_ops` | 算子实现 + 注册表 + 参数规范化 | `ft_core` |
 | `ft_json` | 零依赖 JSON 读写 | 无 |
 | `ft_annotate` | 标注模型、COCO/YOLO 导出 | `ft_core` `ft_json` |
+| `ft_dataset` | 扫描、划分、检查、快照导出 | `ft_core` `ft_io` `ft_annotate` `ft_json` |
 | `ft_pipeline` | Recipe、执行与缓存键 | `ft_core` `ft_io` `ft_ops` `ft_json` |
 | `figtools` | CLI | `ft_pipeline` |
 
@@ -93,6 +94,22 @@ using OperatorFn = Result<Image>(const ImageView&, const Params&);
   `segmentation` 矩形写成 4 点环、多边形写成顶点序列。
 - **YOLO**：类别用**类别列表下标**（不是 `id`），坐标按图像尺寸归一化；
   多边形退化为外接框（检测格式），分割训练需要 YOLO-seg 的额外格式，v0.4 补。
+
+## 4.6 数据集划分：为什么不按组取整
+
+第一版按"每个类别组各自 floor 分配"，在小组上直接崩坏：12 张图分 4 类，每组 1–2 张，
+`floor(0.15 * 1) = 0`，验证集永远是 0。看起来只是"数据少"，实际是算法在小样本上失效。
+
+现在用**在线取整**：遍历打乱后的样本，第 k 个样本分配给"目标份额 `ratio_i * k` 与实际
+已分配数差距最大"的那个 split。
+
+- 结束时每个 split 的计数与 `ratio * n` 的误差 ≤ 1，与样本量无关；
+- 分层只需把样本按主类别排序后打乱块内顺序，算法自然把同类样本摊到三个集合；
+- 没有"组太小就退化"的边界情况。
+
+代价是不保证每个类别在每个 split 的**精确**配额——它保证全局比例准确、类别尽量分散。
+真正的配额约束（每类在 val 里恰好 N 个）留给需要时再加，因为过度约束反而会在大数据集
+上造成系统性偏移。
 
 ## 5. I/O 边界
 

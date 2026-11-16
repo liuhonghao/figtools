@@ -15,12 +15,15 @@
 | **v0.1** | 图像内核、算子库、PNG/BMP/PPM 编解码、Recipe 管线、CLI、40 项单元测试 | ✅ 可用 |
 | **v0.2** | Qt 6 桌面外壳：分割/并排/结果三视图、schema 驱动的处理链、直方图、导出 | ✅ 可用 |
 | **v0.3** | 标注工作台：矩形/多边形、类别色、COCO/YOLO 导出、标注存读 | ✅ 可用 |
-| v0.4 | 数据集划分、Python 训练 worker、ONNX 交接、模型注册表 | 规划中 |
+| **v0.4** | 数据集页：扫描、确定性三分划分、重复检测、快照导出 | ✅ 可用 |
+| v0.5 | Python 训练 worker、ONNX 交接、模型注册表 | 规划中 |
 | v1.0 | 插件 ABI、批量任务中心、团队模式 | 规划中 |
 
 ![workbench](docs/images/workbench.png)
 
 ![annotation](docs/images/annotation.png)
+
+![dataset](docs/images/dataset.png)
 
 当前仓库是**可运行的纵向切片**，不是界面原型：`figtools demo` 会真的生成图像、跑处理链、写出结果并给出 PSNR/SSIM。
 
@@ -71,7 +74,9 @@ QT_ROOT=/path/to/Qt/6.8.3/mingw_64 CXX=/path/to/mingw/bin/g++.exe ./scripts/buil
 
 界面能力：拖入图像即加载；左侧处理链由算子 schema 自动生成（增删、上下移、单步禁用）；中间画布支持**分割对比**（拖白色分界线）、**并排对比**、**只看结果**，滚轮缩放、拖动平移；右侧显示属性、直方图与统计；`Ctrl+S` 按原始分辨率导出。
 
-**标注**页支持矩形拖拽与多边形逐点绘制（双击/回车闭合、Esc 取消）、类别着色、选中后 Delete 删除；标注可存为原生 JSON，也可导出 **COCO**（含 segmentation）或 **YOLO**（归一化 bbox）。
+**标注**页支持矩形拖拽与多边形逐点绘制（双击/回车闭合、Esc 取消）、类别着色、选中后 Delete 删除；标注可存为原生 JSON，也可导出 **COCO**（含 segmentation）或 **YOLO**（归一化 bbox）；还能写成图片旁边的 `.annotations.json`，供数据集页自动收纳。
+
+**数据集**页选择目录后扫描图片与标注，按 70/15/15（可调、可分层、固定种子）划分，给出类别实例统计、重复内容检测与训练前检查，最后一键导出快照（`images/`、`annotations/`、`splits/*.txt`、`dataset.json`、`DATASET_CARD.md`）。
 
 ## 用法
 
@@ -167,10 +172,11 @@ src/io/               PNG(zlib) / BMP / PPM 编解码
 src/ops/              算子实现与注册表
 src/json/             零依赖 JSON 读写
 src/annotate/         标注模型、COCO/YOLO 导出
+src/dataset/          数据集扫描、确定性划分、快照导出
 src/pipeline/         Recipe、执行器
 src/cli/              命令行
 gui/                  Qt 6 桌面外壳（可选构建）
-tests/                51 项单元测试（零第三方依赖）
+tests/                61 项单元测试（零第三方依赖）
 scripts/              无 CMake 时的构建脚本
 docs/                 架构、设计基线、ADR、截图
 examples/recipes/     配方样例

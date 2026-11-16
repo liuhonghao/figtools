@@ -98,6 +98,19 @@ target_link_libraries(ft_annotate PUBLIC ft_core ft_json PRIVATE figtools::warni
 add_library(figtools::annotate ALIAS ft_annotate)
 
 # ---------------------------------------------------------------------------
+# ft_dataset -- scanning, deterministic splits, snapshot export
+# ---------------------------------------------------------------------------
+add_library(ft_dataset STATIC
+  src/dataset/dataset.cpp
+)
+target_include_directories(ft_dataset PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(ft_dataset PUBLIC ft_core ft_io ft_annotate ft_json PRIVATE figtools::warnings)
+add_library(figtools::dataset ALIAS ft_dataset)
+
+# ---------------------------------------------------------------------------
 # ft_pipeline -- recipes and executor
 # ---------------------------------------------------------------------------
 add_library(ft_pipeline STATIC
@@ -130,7 +143,7 @@ if(FIGTOOLS_BUILD_GUI)
   )
   target_include_directories(figtools_gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/gui)
   target_compile_definitions(figtools_gui PRIVATE FIGTOOLS_VERSION="${PROJECT_VERSION}")
-  target_link_libraries(figtools_gui PRIVATE ft_pipeline ft_annotate Qt6::Widgets figtools::warnings)
+  target_link_libraries(figtools_gui PRIVATE ft_pipeline ft_annotate ft_dataset Qt6::Widgets figtools::warnings)
   set_target_properties(figtools_gui PROPERTIES AUTOMOC ON)
   install(TARGETS figtools_gui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
@@ -147,8 +160,9 @@ if(FIGTOOLS_BUILD_TESTS)
     tests/test_io.cpp
     tests/test_pipeline.cpp
     tests/test_annotate.cpp
+    tests/test_dataset.cpp
   )
-  target_link_libraries(ft_tests PRIVATE ft_pipeline ft_annotate figtools::warnings)
+  target_link_libraries(ft_tests PRIVATE ft_pipeline ft_annotate ft_dataset figtools::warnings)
   target_include_directories(ft_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
   add_test(NAME unit COMMAND ft_tests)
 endif()

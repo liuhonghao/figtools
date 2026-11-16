@@ -15,12 +15,16 @@
 #include "figtools/core/image.hpp"
 #include "figtools/pipeline/executor.hpp"
 #include "figtools/annotate/annotation.hpp"
+#include "figtools/dataset/dataset.hpp"
 #include "figtools/pipeline/recipe.hpp"
 
 class QComboBox;
 class QLabel;
 class QListWidget;
 class QTabWidget;
+class QCheckBox;
+class QDoubleSpinBox;
+class QSpinBox;
 class QProgressBar;
 class QVBoxLayout;
 class QWidget;
@@ -40,6 +44,7 @@ class MainWindow : public QMainWindow {
   bool loadPath(const QString& path);
   void loadSample();
   void addDemoAnnotations();
+  void loadDatasetDirectory(const QString& path);
 
  protected:
   void dragEnterEvent(QDragEnterEvent* event) override;
@@ -66,6 +71,11 @@ class MainWindow : public QMainWindow {
   void exportAnnotations(bool coco);
   void saveAnnotations();
   void loadAnnotations();
+  void saveSidecar();
+  void chooseDatasetDirectory();
+  void refreshDatasetUi();
+  void splitDataset();
+  void exportDataset();
   void setBusy(bool busy, const QString& message = QString());
 
   [[nodiscard]] QWidget* buildParamEditor(const ParamSpec& spec, const ParamValue& value,
@@ -96,6 +106,17 @@ class MainWindow : public QMainWindow {
   QTabWidget* tabs_ = nullptr;
   AnnotationSet annotations_;
   int active_class_ = 0;
+
+  Dataset dataset_;
+  QString dataset_path_;
+  QLabel* dataset_stats_ = nullptr;
+  QLabel* dataset_split_ = nullptr;
+  QListWidget* dataset_warnings_ = nullptr;
+  QDoubleSpinBox* train_ratio_ = nullptr;
+  QDoubleSpinBox* val_ratio_ = nullptr;
+  QDoubleSpinBox* test_ratio_ = nullptr;
+  QCheckBox* stratified_ = nullptr;
+  QSpinBox* split_seed_ = nullptr;
   QProgressBar* progress_ = nullptr;
   QTimer* preview_timer_ = nullptr;
 };
