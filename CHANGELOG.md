@@ -3,6 +3,21 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.5.0] - 2026-11-17
+
+### Added
+- **多文档标签栏**：同时打开多张图，每图独立 source/recipe/history/annotations；
+  标签关闭、活动文档切换时完整快照与恢复。支持多个 `--open` 参数批量打开。
+- **对比模式**：新增闪烁（定时切换处理前/后）与差分伪彩（逐像素 RGB 绝对差映射热力色阶）。
+- **测量工具**：取色（RGB + 灰度）与两点测距（距离 + Δx/Δy），结果进入状态栏与输出坞。
+- **命令搜索** `Ctrl+K`：过滤算子与菜单命令，回车执行；`F1` 快捷键速查。
+- **面板折叠**：视图工具条「面板」按钮收起/展开左右坞。
+- **配方预设**：命名保存当前处理链到 QSettings，一键应用。
+- `THIRD_PARTY_NOTICES.md`：明确 MIT 本体、Qt LGPL 动态链接、Ultralytics AGPL 仅独立安装的边界。
+
+### Fixed
+- `Ctrl+D` 快捷键冲突（载入示例图与检测当前图像抢同一键）：示例图改为 `Ctrl+Shift+D`。
+
 ## [1.4.0] - 2026-11-16
 
 ### Added

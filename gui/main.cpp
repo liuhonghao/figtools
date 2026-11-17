@@ -16,7 +16,7 @@
 #include "theme.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.4.0"
+#define FIGTOOLS_VERSION "1.5.0"
 #endif
 
 int main(int argc, char** argv) {
@@ -105,10 +105,12 @@ int main(int argc, char** argv) {
     return 0;
   }
 
-  const int open_index = arguments.indexOf(QStringLiteral("--open"));
-  if (open_index >= 0 && open_index + 1 < arguments.size()) {
-    const QString path = arguments.at(open_index + 1);
-    QTimer::singleShot(300, &window, [&window, path]() { window.loadPath(path); });
+  // Open every --open argument as a separate document tab.
+  for (int i = 0; i < arguments.size() - 1; ++i) {
+    if (arguments.at(i) == QStringLiteral("--open")) {
+      const QString path = arguments.at(i + 1);
+      QTimer::singleShot(300 + i, &window, [&window, path]() { window.loadPath(path); });
+    }
   }
 
   const int batch_infer_index = arguments.indexOf(QStringLiteral("--batch-infer-dialog"));
@@ -188,13 +190,19 @@ int main(int argc, char** argv) {
     });
   }
 
+  const int mode_index = arguments.indexOf(QStringLiteral("--mode"));
+  const int capture_mode = (mode_index >= 0 && mode_index + 1 < arguments.size())
+                               ? arguments.at(mode_index + 1).toInt() : -1;
   const int index = arguments.indexOf(QStringLiteral("--screenshot"));
   if (index >= 0 && index + 1 < arguments.size()) {
     const QString path = arguments.at(index + 1);
     const int delay = arguments.contains(QStringLiteral("--delay"))
                           ? arguments.at(arguments.indexOf(QStringLiteral("--delay")) + 1).toInt()
                           : 900;
-    QTimer::singleShot(delay, &window, [&window, path]() {
+    QTimer::singleShot(delay, &window, [&window, path, capture_mode]() {
+      if (capture_mode >= 0) {
+        window.setCompareMode(capture_mode);
+      }
       window.prepareForCapture();
       const QPixmap pixmap = window.grab();
       pixmap.save(path);

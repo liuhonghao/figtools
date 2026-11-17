@@ -39,12 +39,19 @@ ImageCanvas::ImageCanvas(QWidget* parent) : QWidget(parent) {
   setMouseTracking(true);
   setFocusPolicy(Qt::StrongFocus);
   setCursor(Qt::CrossCursor);
+  flicker_timer_ = new QTimer(this);
+  flicker_timer_->setInterval(flicker_interval_ms_);
+  connect(flicker_timer_, &QTimer::timeout, this, [this]() {
+    flicker_show_after_ = !flicker_show_after_;
+    update();
+  });
 }
 
 void ImageCanvas::setImages(const QImage& before, const QImage& after) {
   const bool first = before_.isNull();
   before_ = before;
   after_ = after;
+  rebuildDifference();
   if (first || auto_fit_) {
     zoom_ = 1.0;
     pan_ = QPointF(0.0, 0.0);
@@ -60,7 +67,53 @@ void ImageCanvas::clearImages() {
 
 void ImageCanvas::setMode(Mode mode) {
   mode_ = mode;
+  if (mode_ == Mode::kFlicker) {
+    flicker_show_after_ = false;
+    flicker_timer_->start();
+  } else if (flicker_timer_ != nullptr) {
+    flicker_timer_->stop();
+  }
   update();
+}
+
+void ImageCanvas::setFlickerInterval(int milliseconds) {
+  flicker_interval_ms_ = std::max(80, milliseconds);
+  if (flicker_timer_ != nullptr) {
+    flicker_timer_->setInterval(flicker_interval_ms_);
+  }
+}
+
+void ImageCanvas::rebuildDifference() {
+  difference_image_ = QImage();
+  if (before_.isNull() || after_.isNull() ||
+      before_.size() != after_.size()) {
+    return;
+  }
+  const int w = before_.width(), h = before_.height();
+  difference_image_ = QImage(w, h, QImage::Format_RGB32);
+  for (int y = 0; y < h; ++y) {
+    for (int x = 0; x < w; ++x) {
+      const QRgb a = before_.pixel(x, y);
+      const QRgb b = after_.pixel(x, y);
+      const int diff = std::abs(static_cast<int>(qRed(a)) - static_cast<int>(qRed(b))) +
+                       std::abs(static_cast<int>(qGreen(a)) - static_cast<int>(qGreen(b))) +
+                       std::abs(static_cast<int>(qBlue(a)) - static_cast<int>(qBlue(b)));
+      // Map 0..765 to a black -> red -> yellow -> white heat scale.
+      const int v = std::min(255, diff * 2);
+      int r = 0, g = 0, bl = 0;
+      if (v < 128) {
+        r = v * 2;
+      } else if (v < 220) {
+        r = 255;
+        g = (v - 128) * 3;
+      } else {
+        r = 255;
+        g = 255;
+        bl = (v - 220) * 3;
+      }
+      difference_image_.setPixel(x, y, qRgb(r, g, bl));
+    }
+  }
 }
 
 void ImageCanvas::setStatusCallback(std::function<void(const QString&)> callback) {
@@ -79,6 +132,9 @@ void ImageCanvas::setTool(Tool tool) {
   tool_ = tool;
   polygon_draft_.clear();
   drawing_rect_ = false;
+  measuring_ = false;
+  measure_start_ = QPointF();
+  measure_end_ = QPointF();
   setCursor(tool == Tool::kNone ? Qt::CrossCursor : Qt::CrossCursor);
   update();
 }
@@ -522,7 +578,17 @@ void ImageCanvas::paintEvent(QPaintEvent* event) {
     drawn = fittedRect(after_.size(), viewport, scale);
 
     shadow(drawn);
-    painter.drawImage(drawn, before_);
+    if (mode_ == Mode::kDifference) {
+      if (!difference_image_.isNull()) {
+        painter.drawImage(drawn, difference_image_);
+      } else {
+        painter.drawImage(drawn, before_);
+      }
+    } else if (mode_ == Mode::kFlicker) {
+      painter.drawImage(drawn, flicker_show_after_ ? after_ : before_);
+    } else {
+      painter.drawImage(drawn, before_);
+    }
 
     if (mode_ == Mode::kSplit) {
       const QRectF reveal(drawn.left() + drawn.width() * split_, drawn.top(),
@@ -549,7 +615,7 @@ void ImageCanvas::paintEvent(QPaintEvent* event) {
                                     handle + QPointF(-2, 3.4)});
       painter.drawPolygon(QPolygonF{handle + QPointF(6, 0), handle + QPointF(2, -3.4),
                                     handle + QPointF(2, 3.4)});
-    } else {
+    } else if (mode_ == Mode::kResult) {
       painter.drawImage(drawn, after_);
     }
     frame(drawn);
@@ -584,6 +650,12 @@ void ImageCanvas::paintEvent(QPaintEvent* event) {
   } else if (mode_ == Mode::kSplit) {
     chip(QPointF(drawn.left() + 10, drawn.top() + 10), tr("原图"), before_dot);
     chip(QPointF(drawn.right() - 78, drawn.top() + 10), tr("结果"), after_dot);
+  } else if (mode_ == Mode::kFlicker) {
+    chip(QPointF(drawn.left() + 10, drawn.top() + 10),
+         flicker_show_after_ ? tr("结果（闪烁）") : tr("原图（闪烁）"),
+         flicker_show_after_ ? after_dot : before_dot);
+  } else if (mode_ == Mode::kDifference) {
+    chip(QPointF(drawn.left() + 10, drawn.top() + 10), tr("差异放大（伪彩）"), after_dot);
   } else {
     chip(QPointF(drawn.left() + 10, drawn.top() + 10), tr("结果"), after_dot);
   }
@@ -649,6 +721,41 @@ void ImageCanvas::finishPolygon() {
 
 void ImageCanvas::mousePressEvent(QMouseEvent* event) {
   if (event->button() != Qt::LeftButton) {
+    return;
+  }
+
+  if (tool_ == Tool::kProbe && !after_.isNull()) {
+    const QPointF image_point = toImagePointF(event->position());
+    const int x = static_cast<int>(image_point.x()), y = static_cast<int>(image_point.y());
+    if (x >= 0 && y >= 0 && x < after_.width() && y < after_.height()) {
+      const QRgb rgb = after_.pixel(x, y);
+      const int grey = qGray(rgb);
+      if (status_callback_) {
+        status_callback_(tr("取色 (%1, %2)  RGB %3, %4, %5   灰度 %6")
+                             .arg(x).arg(y)
+                             .arg(qRed(rgb)).arg(qGreen(rgb)).arg(qBlue(rgb)).arg(grey));
+      }
+    }
+    return;
+  }
+  if (tool_ == Tool::kMeasure && !after_.isNull()) {
+    const QPointF image_point = toImagePointF(event->position());
+    if (!measuring_) {
+      measure_start_ = image_point;
+      measure_end_ = image_point;
+      measuring_ = true;
+    } else {
+      measure_end_ = image_point;
+      measuring_ = false;
+      if (status_callback_) {
+        const double dx = measure_end_.x() - measure_start_.x();
+        const double dy = measure_end_.y() - measure_start_.y();
+        status_callback_(tr("距离 %1 px  (Δx %2, Δy %3)")
+                             .arg(std::hypot(dx, dy), 0, 'f', 1)
+                             .arg(dx, 0, 'f', 1).arg(dy, 0, 'f', 1));
+      }
+    }
+    update();
     return;
   }
 
@@ -722,6 +829,29 @@ void ImageCanvas::mouseMoveEvent(QMouseEvent* event) {
     setCursor(Qt::SplitHCursor);
   } else {
     setCursor(Qt::CrossCursor);
+  }
+
+  if (tool_ == Tool::kMeasure && measuring_) {
+    measure_end_ = toImagePointF(event->position());
+    update();
+    if (status_callback_) {
+      const double dx = measure_end_.x() - measure_start_.x();
+      const double dy = measure_end_.y() - measure_start_.y();
+      status_callback_(tr("距离 %1 px  (Δx %2, Δy %3)")
+                           .arg(std::hypot(dx, dy), 0, 'f', 1)
+                           .arg(dx, 0, 'f', 1).arg(dy, 0, 'f', 1));
+    }
+  } else if (tool_ == Tool::kProbe && !after_.isNull()) {
+    const QPointF ip = toImagePointF(event->position());
+    const int x = static_cast<int>(ip.x()), y = static_cast<int>(ip.y());
+    if (x >= 0 && y >= 0 && x < after_.width() && y < after_.height()) {
+      const QRgb rgb = after_.pixel(x, y);
+      if (status_callback_) {
+        status_callback_(tr("取色 (%1, %2)  RGB %3, %4, %5   灰度 %6")
+                             .arg(x).arg(y).arg(qRed(rgb)).arg(qGreen(rgb))
+                             .arg(qBlue(rgb)).arg(qGray(rgb)));
+      }
+    }
   }
 
   if (cursor_callback_) {

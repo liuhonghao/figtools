@@ -12,6 +12,7 @@
 #include <QDropEvent>
 #include <QElapsedTimer>
 #include <QFileDialog>
+#include <QInputDialog>
 #include <QFileInfo>
 #include <QFrame>
 #include <QGroupBox>
@@ -67,12 +68,13 @@
 #include "batch_infer_dialog.hpp"
 #include "image_canvas.hpp"
 #include "python_env.hpp"
+#include "command_palette.hpp"
 #include "train_dialog.hpp"
 #include "theme.hpp"
 #include "widgets.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.4.0"
+#define FIGTOOLS_VERSION "1.5.0"
 #endif
 
 namespace figtools::gui {
@@ -215,7 +217,7 @@ void MainWindow::buildActions() {
   });
 
   sample_action_ = file_menu->addAction(tr("载入示例图"));
-  sample_action_->setShortcut(QKeySequence(QStringLiteral("Ctrl+D")));
+  sample_action_->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+D")));
   connect(sample_action_, &QAction::triggered, this, &MainWindow::loadSample);
 
   file_menu->addSeparator();
@@ -293,13 +295,46 @@ void MainWindow::buildActions() {
           [this]() { openBatchInferDialog(); });
 
   auto* help_menu = menuBar()->addMenu(tr("帮助(&H)"));
+  auto* palette_action = help_menu->addAction(tr("命令搜索…"));
+  palette_action->setShortcut(QKeySequence(QStringLiteral("Ctrl+K")));
+  connect(palette_action, &QAction::triggered, this, &MainWindow::openCommandPalette);
+  auto* shortcuts_action = help_menu->addAction(tr("快捷键速查…"));
+  shortcuts_action->setShortcut(QKeySequence(QStringLiteral("F1")));
+  connect(shortcuts_action, &QAction::triggered, this, [this]() {
+    const QString rows =
+        tr("<table cellspacing='6' width='100%'>"
+           "<tr><td><b>文件</b></td><td></td></tr>"
+           "<tr><td>打开图像</td><td>Ctrl+O</td></tr>"
+           "<tr><td>导出结果</td><td>Ctrl+S</td></tr>"
+           "<tr><td>载入示例图</td><td>Ctrl+Shift+D</td></tr>"
+           "<tr><td>批量处理</td><td>Ctrl+B</td></tr>"
+           "<tr><td><b>编辑</b></td><td></td></tr>"
+           "<tr><td>撤销 / 重做</td><td>Ctrl+Z / Ctrl+Y</td></tr>"
+           "<tr><td><b>视图</b></td><td></td></tr>"
+           "<tr><td>适应窗口 / 实际像素</td><td>F / 1</td></tr>"
+           "<tr><td><b>模型</b></td><td></td></tr>"
+           "<tr><td>训练模型</td><td>Ctrl+T</td></tr>"
+           "<tr><td>分类 / 检测当前图像</td><td>Ctrl+R / Ctrl+D</td></tr>"
+           "<tr><td>批量推理</td><td>Ctrl+Shift+R</td></tr>"
+           "<tr><td><b>其它</b></td><td></td></tr>"
+           "<tr><td>本帮助</td><td>F1</td></tr>"
+           "</table>");
+    QMessageBox dialog(this);
+    dialog.setWindowTitle(tr("快捷键速查"));
+    dialog.setText(tr("<h3>快捷键</h3>%1").arg(rows));
+    dialog.setStandardButtons(QMessageBox::Ok);
+    dialog.exec();
+  });
   auto* about_action = help_menu->addAction(tr("关于 figtools"));
   connect(about_action, &QAction::triggered, this, [this]() {
     QMessageBox::about(this, tr("关于 figtools"),
                        tr("<b>figtools</b> 图像工作台<br/>版本 %1<br/><br/>"
                           "确定性算子管线（%2 个算子）<br/>"
-                          "对比：分割 / 并排 / 结果三种视图<br/>"
-                          "标注、数据集划分与快照导出")
+                          "分割 / 并排 / 结果三种对比视图<br/>"
+                          "标注、数据集划分、YOLO 训练与检测、实例分割、OCR<br/>"
+                          "暖色 / 冷色双主题<br/><br/>"
+                          "核心：MIT · 可选训练组件 Ultralytics：AGPL-3.0（独立安装，不随程序分发）<br/>"
+                          "详见 THIRD_PARTY_NOTICES.md")
                            .arg(QStringLiteral(FIGTOOLS_VERSION))
                            .arg(static_cast<int>(Registry::instance().size())));
   });
@@ -384,6 +419,15 @@ void MainWindow::buildUi() {
   auto* canvas_layout = new QVBoxLayout(canvas_view);
   canvas_layout->setContentsMargins(0, 0, 0, 0);
   canvas_layout->setSpacing(0);
+  document_tabs_ = new QTabWidget(canvas_view);
+  document_tabs_->setObjectName(QStringLiteral("DocumentTabs"));
+  document_tabs_->setDocumentMode(true);
+  document_tabs_->setTabsClosable(true);
+  document_tabs_->setMovable(true);
+  document_tabs_->setMaximumHeight(32);
+  connect(document_tabs_, &QTabWidget::currentChanged, this, &MainWindow::switchDocument);
+  connect(document_tabs_, &QTabWidget::tabCloseRequested, this, &MainWindow::closeDocument);
+  canvas_layout->addWidget(document_tabs_);
   canvas_layout->addWidget(buildViewToolbar(canvas_view));
 
   canvas_ = new ImageCanvas(canvas_view);
@@ -604,6 +648,8 @@ QWidget* MainWindow::buildViewToolbar(QWidget* parent) {
       {QT_TR_NOOP("分割"), ImageCanvas::Mode::kSplit},
       {QT_TR_NOOP("并排"), ImageCanvas::Mode::kSide},
       {QT_TR_NOOP("结果"), ImageCanvas::Mode::kResult},
+      {QT_TR_NOOP("闪烁"), ImageCanvas::Mode::kFlicker},
+      {QT_TR_NOOP("差分"), ImageCanvas::Mode::kDifference},
   };
   for (const auto& entry : modes) {
     auto* button = new QToolButton(mode_frame);
@@ -611,7 +657,7 @@ QWidget* MainWindow::buildViewToolbar(QWidget* parent) {
     button->setCheckable(true);
     button->setToolButtonStyle(Qt::ToolButtonTextOnly);
     button->setFont(theme::ui_font(10));
-    button->setMinimumWidth(42);
+    button->setMinimumWidth(36);
     mode_layout->addWidget(button);
     mode_group_->addButton(button, static_cast<int>(entry.mode));
   }
@@ -641,6 +687,7 @@ QWidget* MainWindow::buildViewToolbar(QWidget* parent) {
       canvas_->zoomToActualSize();
     }
   });
+  tool_button(tr("面板"), tr("显示 / 隐藏左右面板"), [this]() { toggleSidePanes(); });
   layout->addStretch(1);
   return bar;
 }
@@ -711,7 +758,8 @@ QWidget* MainWindow::buildRibbonPage(int page_index) {
         {QT_TR_NOOP("配方"), {
             {QT_TR_NOOP("保存"), theme::Glyph::kSave, true, [this]() { saveRecipe(); }},
             {QT_TR_NOOP("载入"), theme::Glyph::kOpen, true, [this]() { loadRecipe(); }},
-            {QT_TR_NOOP("批量"), theme::Glyph::kBatch, true, [this]() { openBatchDialog(); }},
+            {QT_TR_NOOP("存为预设"), theme::Glyph::kSave, true, [this]() { savePreset(); }},
+            {QT_TR_NOOP("应用预设"), theme::Glyph::kPlay, true, [this]() { applyPreset(); }},
         }},
         {QT_TR_NOOP("算子"), {
             {QT_TR_NOOP("添加"), theme::Glyph::kPlus, true,
@@ -897,6 +945,85 @@ void MainWindow::toggleTheme() {
   notify(tr("已切换到%1主题").arg(theme::mode_name()), 2500);
 }
 
+void MainWindow::openCommandPalette() {
+  std::vector<CommandPalette::Command> commands;
+  for (const auto* op : Registry::instance().all()) {
+    commands.push_back({QString::fromStdString(op->spec.label),
+                        tr("算子 · %1").arg(QString::fromStdString(op->spec.group)),
+                        QStringLiteral("op:") + QString::fromStdString(op->spec.id)});
+  }
+  commands.push_back({tr("打开图像"), tr("文件"), QStringLiteral("open")});
+  commands.push_back({tr("载入示例图"), tr("文件"), QStringLiteral("sample")});
+  commands.push_back({tr("导出结果"), tr("文件"), QStringLiteral("export")});
+  commands.push_back({tr("批量处理"), tr("文件"), QStringLiteral("batch")});
+  commands.push_back({tr("训练模型"), tr("模型"), QStringLiteral("train")});
+  commands.push_back({tr("分类当前图像"), tr("模型"), QStringLiteral("infer")});
+  commands.push_back({tr("检测当前图像"), tr("模型"), QStringLiteral("detect")});
+  commands.push_back({tr("实例分割当前图像"), tr("模型"), QStringLiteral("segment")});
+  commands.push_back({tr("OCR 识别当前图像"), tr("模型"), QStringLiteral("ocr")});
+  commands.push_back({tr("批量推理"), tr("模型"), QStringLiteral("batchinfer")});
+  commands.push_back({tr("切换界面主题"), tr("视图"), QStringLiteral("theme")});
+  commands.push_back({tr("显示 / 隐藏左右面板"), tr("视图"), QStringLiteral("panes")});
+  commands.push_back({tr("适应窗口"), tr("视图"), QStringLiteral("fit")});
+  commands.push_back({tr("实际像素 1:1"), tr("视图"), QStringLiteral("actual")});
+  commands.push_back({tr("撤销"), tr("编辑"), QStringLiteral("undo")});
+  commands.push_back({tr("重做"), tr("编辑"), QStringLiteral("redo")});
+
+  CommandPalette palette(commands, this);
+  if (palette.exec() != QDialog::Accepted) {
+    return;
+  }
+  executeCommand(palette.selectedId());
+}
+
+void MainWindow::executeCommand(const QString& id) {
+  if (id.isEmpty()) {
+    return;
+  }
+  if (id.startsWith(QStringLiteral("op:"))) {
+    addOperator(id.mid(3));
+    return;
+  }
+  if (id == QStringLiteral("open")) { open_action_->trigger(); }
+  else if (id == QStringLiteral("sample")) { loadSample(); }
+  else if (id == QStringLiteral("export")) { export_action_->trigger(); }
+  else if (id == QStringLiteral("batch")) { openBatchDialog(); }
+  else if (id == QStringLiteral("train")) { openTrainDialog(); }
+  else if (id == QStringLiteral("infer")) { runInference(); }
+  else if (id == QStringLiteral("detect")) { runDetection(); }
+  else if (id == QStringLiteral("segment")) { runSegmentation(); }
+  else if (id == QStringLiteral("ocr")) { runOCR(); }
+  else if (id == QStringLiteral("batchinfer")) { openBatchInferDialog(); }
+  else if (id == QStringLiteral("theme")) { toggleTheme(); }
+  else if (id == QStringLiteral("panes")) { toggleSidePanes(); }
+  else if (id == QStringLiteral("fit") && canvas_ != nullptr) { canvas_->fitToWindow(); }
+  else if (id == QStringLiteral("actual") && canvas_ != nullptr) { canvas_->zoomToActualSize(); }
+  else if (id == QStringLiteral("undo")) { undoRecipe(); }
+  else if (id == QStringLiteral("redo")) { redoRecipe(); }
+}
+
+void MainWindow::toggleSidePanes() {
+  if (main_splitter_ == nullptr) {
+    return;
+  }
+  QWidget* left = main_splitter_->widget(0);
+  QWidget* right = main_splitter_->widget(2);
+  const bool visible = left != nullptr && left->isVisible();
+  if (visible) {
+    saved_pane_sizes_ = main_splitter_->sizes();
+    if (left) left->hide();
+    if (right) right->hide();
+    notify(tr("面板已收起，画布全宽显示"), 1500);
+  } else {
+    if (left) left->show();
+    if (right) right->show();
+    if (!saved_pane_sizes_.isEmpty()) {
+      main_splitter_->setSizes(saved_pane_sizes_);
+    }
+    notify(tr("面板已展开"), 1500);
+  }
+}
+
 void MainWindow::prepareForCapture() {
   if (canvas_ != nullptr) {
     canvas_->fitToWindow();
@@ -993,7 +1120,7 @@ QWidget* MainWindow::buildAnnotatePage(QWidget* parent) {
   auto* tool_frame = segmented(page, &tool_layout);
   auto* tool_group = new QButtonGroup(tool_frame);
   tool_group->setExclusive(true);
-  const QStringList tool_names{tr("选择"), tr("矩形"), tr("多边形")};
+  const QStringList tool_names{tr("选择"), tr("矩形"), tr("多边形"), tr("取色"), tr("测距")};
   for (int i = 0; i < tool_names.size(); ++i) {
     auto* button = new QToolButton(tool_frame);
     button->setText(tool_names.at(i));
@@ -1053,8 +1180,13 @@ QWidget* MainWindow::buildAnnotatePage(QWidget* parent) {
     if (canvas_ == nullptr) {
       return;
     }
-    canvas_->setTool(id == 1 ? ImageCanvas::Tool::kRect
-                             : (id == 2 ? ImageCanvas::Tool::kPolygon : ImageCanvas::Tool::kNone));
+    switch (id) {
+      case 1: canvas_->setTool(ImageCanvas::Tool::kRect); break;
+      case 2: canvas_->setTool(ImageCanvas::Tool::kPolygon); break;
+      case 3: canvas_->setTool(ImageCanvas::Tool::kProbe); break;
+      case 4: canvas_->setTool(ImageCanvas::Tool::kMeasure); break;
+      default: canvas_->setTool(ImageCanvas::Tool::kNone); break;
+    }
   });
   connect(shape_list_, &QListWidget::currentRowChanged, this, [this](int row) {
     if (canvas_ != nullptr) {
@@ -1757,6 +1889,47 @@ void MainWindow::exportImage() {
       5000);
 }
 
+void MainWindow::savePreset() {
+  bool ok = false;
+  const QString name = QInputDialog::getText(
+      this, tr("保存为预设"), tr("预设名称："), QLineEdit::Normal, QString(), &ok);
+  if (!ok || name.trimmed().isEmpty()) {
+    return;
+  }
+  QSettings settings;
+  settings.setValue(QStringLiteral("presets/%1").arg(name.trimmed()),
+                    QString::fromStdString(recipe_.to_json(2)));
+  notify(tr("已保存预设：%1").arg(name.trimmed()), 2000);
+}
+
+void MainWindow::applyPreset() {
+  QSettings settings;
+  settings.beginGroup(QStringLiteral("presets"));
+  const QStringList names = settings.allKeys();
+  if (names.isEmpty()) {
+    settings.endGroup();
+    QMessageBox::information(this, tr("应用预设"), tr("还没有保存过预设。请先用「存为预设」。"));
+    return;
+  }
+  bool ok = false;
+  const QString chosen = QInputDialog::getItem(
+      this, tr("应用预设"), tr("选择预设："), names, 0, false, &ok);
+  if (!ok || chosen.isEmpty()) {
+    settings.endGroup();
+    return;
+  }
+  const QString json = settings.value(chosen).toString();
+  settings.endGroup();
+  auto parsed = Recipe::from_json(json.toStdString());
+  if (!parsed) {
+    QMessageBox::warning(this, tr("应用预设"), tr("预设内容无法解析。"));
+    return;
+  }
+  recipe_ = std::move(parsed.value());
+  commitRecipe(tr("应用预设 %1").arg(chosen));
+  notify(tr("已应用预设：%1").arg(chosen), 2000);
+}
+
 void MainWindow::saveRecipe() {
   const QString path = QFileDialog::getSaveFileName(this, tr("保存配方"),
                                                     QStringLiteral("recipe.json"),
@@ -2165,6 +2338,123 @@ void MainWindow::loadDatasetDirectory(const QString& path) {
 // Image loading
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Multi-document management
+// ---------------------------------------------------------------------------
+
+void MainWindow::addDocumentTabs() {
+  if (document_tabs_ == nullptr) {
+    return;
+  }
+  switching_document_ = true;
+  document_tabs_->clear();
+  for (const Document& document : documents_) {
+    QString label = document.display_name;
+    if (label.isEmpty()) {
+      label = document.path.isEmpty() ? tr("示例图") : QFileInfo(document.path).fileName();
+    }
+    document_tabs_->addTab(new QWidget(document_tabs_),
+                           (document.dirty ? QStringLiteral("• ") : QString()) + label);
+  }
+  if (active_document_ >= 0 && active_document_ < documents_.size()) {
+    document_tabs_->setCurrentIndex(active_document_);
+  }
+  switching_document_ = false;
+}
+
+void MainWindow::switchDocument(int index) {
+  if (switching_document_ || index < 0 || index >= documents_.size() ||
+      index == active_document_) {
+    return;
+  }
+  // Snapshot the active document's live state.
+  if (active_document_ >= 0 && active_document_ < documents_.size()) {
+    Document& current = documents_[active_document_];
+    current.source = source_;
+    current.full_size = full_image_size_;
+    current.has_full_source = has_full_source_;
+    current.path = source_path_;
+    current.recipe = recipe_;
+    current.history = history_;
+    current.annotations = annotations_;
+  }
+  active_document_ = index;
+  const Document& document = documents_[index];
+  source_ = document.source;
+  full_image_size_ = document.full_size;
+  has_full_source_ = document.has_full_source;
+  source_path_ = document.path;
+  recipe_ = document.recipe;
+  history_ = document.history;
+  annotations_ = document.annotations;
+
+  switching_document_ = true;
+  addDocumentTabs();
+  switching_document_ = false;
+
+  setWindowTitle(tr("figtools — %1").arg(document.display_name));
+  if (status_file_ != nullptr) {
+    status_file_->setText(document.display_name);
+  }
+  prediction_label_.clear();
+  prediction_second_.clear();
+  prediction_confidence_ = -1.0;
+  refreshModelPanel();
+  refreshAnnotationLists();
+  if (canvas_ != nullptr) {
+    canvas_->clearInferenceResult();
+  }
+  building_chain_ = true;
+  rebuildChain();
+  building_chain_ = false;
+  updateInfoPanel();
+  runPreview();
+  notify(tr("切换到：%1").arg(document.display_name), 1500);
+}
+
+void MainWindow::closeDocument(int index) {
+  if (index < 0 || index >= documents_.size()) {
+    return;
+  }
+  const bool was_active = index == active_document_;
+  documents_.removeAt(index);
+  if (documents_.isEmpty()) {
+    active_document_ = -1;
+    loadSample();
+    return;
+  }
+  if (was_active) {
+    active_document_ = -1;
+    const int target = std::min(index, static_cast<int>(documents_.size()) - 1);
+    addDocumentTabs();
+    switchDocument(target);
+  } else {
+    if (active_document_ > index) {
+      --active_document_;
+    }
+    addDocumentTabs();
+  }
+}
+
+void MainWindow::registerCurrentDocument(const QString& name, bool replace_current) {
+  Document document;
+  document.path = source_path_;
+  document.display_name = name;
+  document.source = source_;
+  document.full_size = full_image_size_;
+  document.has_full_source = has_full_source_;
+  document.recipe = recipe_;
+  document.history = history_;
+  document.annotations = annotations_;
+  if (replace_current && active_document_ >= 0 && active_document_ < documents_.size()) {
+    documents_[active_document_] = document;
+  } else {
+    documents_.append(document);
+    active_document_ = documents_.size() - 1;
+  }
+  addDocumentTabs();
+}
+
 bool MainWindow::loadPath(const QString& path) {
   auto image = load_image(path.toStdString());
   if (!image) {
@@ -2191,6 +2481,7 @@ bool MainWindow::loadPath(const QString& path) {
     status_file_->setText(QFileInfo(path).fileName());
   }
   updateInfoPanel();
+  registerCurrentDocument(QFileInfo(path).fileName());
   runPreview();
   return true;
 }
@@ -2215,6 +2506,7 @@ void MainWindow::loadSample() {
     status_file_->setText(tr("示例图"));
   }
   updateInfoPanel();
+  registerCurrentDocument(tr("示例图"), true);
   runPreview();
 }
 

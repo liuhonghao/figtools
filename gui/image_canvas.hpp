@@ -17,6 +17,7 @@
 #include <QPoint>
 #include <QPointF>
 #include <QWidget>
+#include <QTimer>
 #include <functional>
 #include <vector>
 
@@ -32,14 +33,15 @@ class ImageCanvas : public QWidget {
   Q_OBJECT
 
  public:
-  enum class Mode { kSplit, kSide, kResult };
-  enum class Tool { kNone, kRect, kPolygon };
+  enum class Mode { kSplit, kSide, kResult, kFlicker, kDifference };
+  enum class Tool { kNone, kRect, kPolygon, kProbe, kMeasure };
 
   explicit ImageCanvas(QWidget* parent = nullptr);
 
   void setImages(const QImage& before, const QImage& after);
   void clearImages();
   void setMode(Mode mode);
+  void setFlickerInterval(int milliseconds);
   [[nodiscard]] Mode mode() const { return mode_; }
 
   void fitToWindow();
@@ -106,6 +108,7 @@ class ImageCanvas : public QWidget {
   [[nodiscard]] QRectF displayedImageRect() const;
   [[nodiscard]] QPointF toImagePointF(QPointF widget_point) const;
   [[nodiscard]] int hitTest(QPointF image_point) const;
+  void rebuildDifference();
   void finishPolygon();
   void finishRect();
 
@@ -115,12 +118,19 @@ class ImageCanvas : public QWidget {
   double zoom_ = 1.0;
   QPointF pan_;
   double split_ = 0.5;
+  bool flicker_show_after_ = false;
+  int flicker_interval_ms_ = 450;
+  QTimer* flicker_timer_ = nullptr;
+  QImage difference_image_;
   bool dragging_divider_ = false;
   bool panning_ = false;
   QPoint last_mouse_;
   bool auto_fit_ = true;
 
   Tool tool_ = Tool::kNone;
+  QPointF measure_start_;  // first point of a distance measurement
+  QPointF measure_end_;
+  bool measuring_ = false;
   AnnotationSet* annotations_ = nullptr;
   int active_class_ = 0;
   int selected_ = -1;

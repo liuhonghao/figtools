@@ -12,6 +12,7 @@
 #include <QString>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QVector>
 
 #include <memory>
 
@@ -35,13 +36,27 @@ class QProgressBar;
 class QSpinBox;
 class QSplitter;
 class QStackedWidget;
-class QStackedWidget;
 class QTabWidget;
 class QToolButton;
 class QVBoxLayout;
 class QWidget;
 
 namespace figtools::gui {
+
+// One open image and all of its editable state. The MainWindow holds the
+// active document in its member fields; switching tabs snapshots the current
+// one into this struct and restores the target.
+struct Document {
+  QString path;
+  QString display_name;
+  Image source;
+  QSize full_size;
+  bool has_full_source = false;
+  Recipe recipe;
+  RecipeHistory history{Recipe{}};
+  AnnotationSet annotations;
+  bool dirty = false;
+};
 
 class TrainDialog;
 
@@ -66,6 +81,10 @@ class MainWindow : public QMainWindow {
   void openBatchDialog(const QString& suggested_input = QString());
   void openTrainDialog(const QString& data_hint = QString());
   void showCanvasView();
+  void switchDocument(int index);
+  void closeDocument(int index);
+  void addDocumentTabs();
+  void registerCurrentDocument(const QString& name, bool replace_current = false);
   void replayTrainingLog(const QString& path);
   void chooseModel();
   void loadModel(const QString& directory);
@@ -75,6 +94,12 @@ class MainWindow : public QMainWindow {
   void runOCR();
   void openBatchInferDialog(const QString& data_hint = QString());
   void refreshModelPanel();
+  void setCompareMode(int mode);
+  void toggleSidePanes();
+  void openCommandPalette();
+  void executeCommand(const QString& id);
+  void savePreset();
+  void applyPreset();
 
  protected:
   void dragEnterEvent(QDragEnterEvent* event) override;
@@ -120,7 +145,6 @@ class MainWindow : public QMainWindow {
   void exportDataset();
   void setBusy(bool busy, const QString& message = QString());
   void notify(const QString& text, int timeout_ms = 3000);
-  void setCompareMode(int mode);
   void toggleTheme();
   void commitRecipe(const QString& label, const QString& coalesce_token = QString());
   void undoRecipe();
@@ -163,6 +187,10 @@ class MainWindow : public QMainWindow {
   QListWidget* class_list_ = nullptr;
   QListWidget* shape_list_ = nullptr;
   QTabWidget* tabs_ = nullptr;
+  QTabWidget* document_tabs_ = nullptr;
+  QVector<Document> documents_;
+  int active_document_ = -1;
+  bool switching_document_ = false;
   AnnotationSet annotations_;
   int active_class_ = 0;
 
