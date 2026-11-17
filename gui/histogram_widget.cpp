@@ -57,12 +57,12 @@ void HistogramWidget::paintEvent(QPaintEvent* event) {
 
   const QRectF box = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
   painter.setPen(QPen(theme::colour(theme::kLine), 1.0));
-  painter.setBrush(theme::colour("#FBF6EC"));
+  painter.setBrush(theme::colour(theme::kSurface));
   painter.drawRoundedRect(box, 5, 5);
 
   const QRectF plot = box.adjusted(10, 10, -10, -8);
 
-  painter.setPen(QPen(theme::colour("#EDE4D3"), 1.0));
+  painter.setPen(QPen(theme::colour(theme::kLine), 1.0));
   for (int i = 1; i < 4; ++i) {
     const double y = plot.top() + plot.height() * static_cast<double>(i) / 4.0;
     painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
@@ -123,7 +123,7 @@ void HistogramWidget::paintEvent(QPaintEvent* event) {
     painter.drawPath(buildPath(curves[channel], plot));
   }
 
-  painter.setPen(QPen(theme::colour("#E0D5C1"), 1.0));
+  painter.setPen(QPen(theme::colour(theme::kLineStrong), 1.0));
   painter.setBrush(Qt::NoBrush);
   painter.drawLine(QPointF(plot.left(), plot.bottom()), QPointF(plot.right(), plot.bottom()));
   painter.setRenderHint(QPainter::Antialiasing, false);

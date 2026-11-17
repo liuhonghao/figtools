@@ -16,7 +16,7 @@
 #include "theme.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.5.0"
+#define FIGTOOLS_VERSION "1.6.0"
 #endif
 
 int main(int argc, char** argv) {

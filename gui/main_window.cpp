@@ -74,7 +74,7 @@
 #include "widgets.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.5.0"
+#define FIGTOOLS_VERSION "1.6.0"
 #endif
 
 namespace figtools::gui {
@@ -351,7 +351,6 @@ void MainWindow::buildUi() {
   outer->setContentsMargins(0, 0, 0, 0);
   outer->setSpacing(0);
 
-  buildTopBar(outer);
   buildRibbon(outer);
 
   auto* body = new QSplitter(Qt::Vertical, central);
@@ -376,8 +375,8 @@ void MainWindow::buildUi() {
   project_tree->setObjectName(QStringLiteral("ProjectTree"));
   project_tree->setHeaderHidden(true);
   project_tree->setRootIsDecorated(false);
-  project_tree->setMaximumHeight(112);
-  project_tree->setMinimumHeight(84);
+  project_tree->setMaximumHeight(78);   // hug three rows instead of leaving dead space
+  project_tree->setMinimumHeight(78);
   auto* root_image = new QTreeWidgetItem(project_tree, {tr("图像")});
   root_image->setIcon(0, theme::icon(theme::Glyph::kImage));
   auto* root_anno = new QTreeWidgetItem(project_tree, {tr("标注")});
@@ -611,6 +610,33 @@ void MainWindow::buildRibbon(QVBoxLayout* outer) {
   tabs->setObjectName(QStringLiteral("RibbonTabs"));
   tabs->tabBar()->setObjectName(QStringLiteral("RibbonBar"));
   tabs->setMaximumHeight(106);
+
+  // Brand on the left corner of the tab row, theme switch on the right.
+  // This removes the old separate QuickBar row (whose open/save/undo buttons
+  // duplicated the Ribbon) and keeps the header to menu + ribbon only.
+  auto* brand_box = new QWidget(tabs);
+  auto* brand_layout = new QHBoxLayout(brand_box);
+  brand_layout->setContentsMargins(10, 0, 8, 0);
+  brand_layout->setSpacing(5);
+  auto* mark = new QLabel(brand_box);
+  mark->setFixedSize(8, 8);
+  mark->setStyleSheet(QStringLiteral("background:%1; border-radius:2px;")
+                          .arg(theme::colour(theme::kAccent).name()));
+  auto* brand = new QLabel(QStringLiteral("figtools"), brand_box);
+  brand->setObjectName(QStringLiteral("Brand"));
+  brand->setFont(theme::ui_font(12, QFont::DemiBold));
+  brand_layout->addWidget(mark);
+  brand_layout->addWidget(brand);
+  tabs->setCornerWidget(brand_box, Qt::TopLeftCorner);
+
+  theme_button_ = new QToolButton(tabs);
+  theme_button_->setIcon(theme::icon(theme::Glyph::kTheme));
+  theme_button_->setText(theme::mode_name());
+  theme_button_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+  theme_button_->setFont(theme::ui_font(10));
+  theme_button_->setToolTip(tr("点击切换界面主题（当前：%1）").arg(theme::mode_name()));
+  connect(theme_button_, &QToolButton::clicked, this, &MainWindow::toggleTheme);
+  tabs->setCornerWidget(theme_button_, Qt::TopRightCorner);
   const char* names[] = {"开始", "处理", "标注", "数据集", "模型", "视图"};
   for (int i = 0; i < 6; ++i) {
     tabs->addTab(buildRibbonPage(i), tr(names[i]));
@@ -751,6 +777,26 @@ QWidget* MainWindow::buildRibbonPage(int page_index) {
         {QT_TR_NOOP("批处理"), {
             {QT_TR_NOOP("批量处理"), theme::Glyph::kBatch, true,
              [this]() { openBatchDialog(); }},
+            {QT_TR_NOOP("批量推理"), theme::Glyph::kBatch, true,
+             [this]() { openBatchInferDialog(); }},
+        }},
+        {QT_TR_NOOP("推理"), {
+            {QT_TR_NOOP("分类"), theme::Glyph::kModel, true,
+             [this]() { runInference(); }},
+            {QT_TR_NOOP("检测"), theme::Glyph::kDetect, true,
+             [this]() { runDetection(); }},
+            {QT_TR_NOOP("分割"), theme::Glyph::kLayers, true,
+             [this]() { runSegmentation(); }},
+            {QT_TR_NOOP("训练模型"), theme::Glyph::kTrain, true,
+             [this]() { openTrainDialog(); }},
+        }},
+        {QT_TR_NOOP("辅助"), {
+            {QT_TR_NOOP("命令搜索"), theme::Glyph::kSearch, true,
+             [this]() { openCommandPalette(); }},
+            {QT_TR_NOOP("面板"), theme::Glyph::kLayers, true,
+             [this]() { toggleSidePanes(); }},
+            {QT_TR_NOOP("适应"), theme::Glyph::kFit, true,
+             [this]() { if (canvas_) canvas_->fitToWindow(); }},
         }},
     };
   } else if (page_index == 1) {  // 处理
@@ -1073,11 +1119,7 @@ QWidget* MainWindow::buildChainPage(QWidget* parent) {
   add_button->setIconSize(QSize(14, 14));
   add_button->setMinimumHeight(30);
   add_button->setCursor(Qt::PointingHandCursor);
-  add_button->setStyleSheet(
-      QStringLiteral("QPushButton { background:transparent; border:1px dashed #2E3742; "
-                     "color:#98A1AC; }"
-                     "QPushButton:hover { background:#1A212A; border-color:#3E6FA8; "
-                     "color:#E7EAEE; }"));
+  add_button->setObjectName(QStringLiteral("AddStepButton"));
   auto* menu = new QMenu(add_button);
   const auto& registry = Registry::instance();
   std::string current_group;
@@ -1316,57 +1358,69 @@ QWidget* MainWindow::buildFactsPanel(QWidget* parent) {
   panel->setObjectName(QStringLiteral("PanelRight"));
   auto* layout = new QVBoxLayout(panel);
   layout->addWidget(theme::dock_title(tr("属性检查器"), panel));
-  layout->setContentsMargins(14, 13, 14, 14);
-  layout->setSpacing(8);
+  layout->setContentsMargins(10, 8, 10, 10);
+  layout->setSpacing(2);
 
-  layout->addWidget(theme::section_label(tr("图像属性"), panel));
-  layout->addWidget(theme::hairline(panel));
-  layout->addSpacing(2);
-  info_list_ = new KeyValueList(panel);
+  // Collapsible sections: the first two open by default, the rest tucked away
+  // so the inspector does not read as an undifferentiated wall of small text.
+  const auto section = [panel](const QString& title, bool expanded) {
+    auto* box = new QGroupBox(title, panel);
+    box->setObjectName(QStringLiteral("InspectSection"));
+    box->setCheckable(true);
+    box->setChecked(expanded);
+    auto* content = new QWidget(box);
+    auto* box_layout = new QVBoxLayout(content);
+    box_layout->setContentsMargins(10, 6, 10, 8);
+    box_layout->setSpacing(4);
+    auto* outer_layout = new QVBoxLayout(box);
+    outer_layout->setContentsMargins(0, 4, 0, 0);
+    outer_layout->addWidget(content);
+    content->setVisible(expanded);
+    QObject::connect(box, &QGroupBox::toggled, content, &QWidget::setVisible);
+    return std::make_pair(box, box_layout);
+  };
+
+  auto info_section = section(tr("图像属性"), true);
+  info_list_ = new KeyValueList(info_section.first);
   info_list_->set_rows({{tr("文件"), tr("—")}});
-  layout->addWidget(info_list_);
+  info_section.second->addWidget(info_list_);
+  layout->addWidget(info_section.first);
 
-  layout->addSpacing(10);
+  auto hist_section = section(tr("直方图"), true);
   auto* hist_header = new QHBoxLayout();
   hist_header->setContentsMargins(0, 0, 0, 0);
-  hist_header->addWidget(theme::section_label(tr("直方图"), panel));
   hist_header->addStretch(1);
   auto* legend = new QLabel(
-      QStringLiteral("<span style='color:#A9503C'>R</span> "
-                     "<span style='color:#6B7F4A'>G</span> "
-                     "<span style='color:#3F6E8C'>B</span>"),
-      panel);
+      QStringLiteral("<span style='color:#D9615A'>R</span> "
+                     "<span style='color:#4FA97A'>G</span> "
+                     "<span style='color:#3D9BE9'>B</span>"),
+      hist_section.first);
   legend->setTextFormat(Qt::RichText);
   legend->setFont(theme::mono_font(9, QFont::DemiBold));
   hist_header->addWidget(legend);
-  layout->addLayout(hist_header);
-  layout->addWidget(theme::hairline(panel));
-  histogram_ = new HistogramWidget(panel);
-  histogram_->setFixedHeight(108);
-  layout->addWidget(histogram_);
+  hist_section.second->addLayout(hist_header);
+  histogram_ = new HistogramWidget(hist_section.first);
+  histogram_->setFixedHeight(96);
+  hist_section.second->addWidget(histogram_);
+  layout->addWidget(hist_section.first);
 
-  layout->addSpacing(10);
-  layout->addWidget(theme::section_label(tr("统计"), panel));
-  layout->addWidget(theme::hairline(panel));
-  layout->addSpacing(2);
-  stats_list_ = new KeyValueList(panel);
+  auto stats_section = section(tr("统计"), false);
+  stats_list_ = new KeyValueList(stats_section.first);
   stats_list_->set_rows({});
-  layout->addWidget(stats_list_);
+  stats_section.second->addWidget(stats_list_);
+  layout->addWidget(stats_section.first);
 
-  layout->addSpacing(10);
-  layout->addWidget(theme::section_label(tr("质量对比"), panel));
-  layout->addWidget(theme::hairline(panel));
-  quality_list_ = new KeyValueList(panel);
+  auto quality_section = section(tr("质量对比"), false);
+  quality_list_ = new KeyValueList(quality_section.first);
   quality_list_->set_rows({{tr("PSNR"), tr("—")}, {tr("SSIM"), tr("—")}});
-  layout->addWidget(quality_list_);
+  quality_section.second->addWidget(quality_list_);
+  layout->addWidget(quality_section.first);
 
-  layout->addSpacing(10);
-  layout->addWidget(theme::section_label(tr("模型"), panel));
-  layout->addWidget(theme::hairline(panel));
-  layout->addSpacing(2);
-  model_list_ = new KeyValueList(panel);
+  auto model_section = section(tr("模型"), false);
+  model_list_ = new KeyValueList(model_section.first);
   model_list_->set_rows({{tr("模型"), tr("未载入")}, {tr("预测"), tr("—")}});
-  layout->addWidget(model_list_);
+  model_section.second->addWidget(model_list_);
+  layout->addWidget(model_section.first);
 
   layout->addStretch(1);
   return panel;

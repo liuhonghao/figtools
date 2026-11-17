@@ -19,7 +19,7 @@
 namespace figtools::gui::theme {
 namespace {
 
-Mode g_mode = Mode::kWarm;
+Mode g_mode = Mode::kCool;  // Lidar360-style dark is the default
 
 struct Palette {
   const char* base; const char* panel; const char* surface; const char* canvas;
@@ -40,13 +40,19 @@ constexpr Palette kWarm{
     "#2A2823", "#F6F3EC", "#F2EFE8", "#E9E3D7", "#FFFFFF", "#3A372F", "#F4E2D4",
     "#DDAE8B", "#8A8474"};
 
-// Cool palette: identical structure, blue-grey chrome and a steel-blue accent.
+// "Pro" palette: Lidar360-inspired dark chrome. Neutral blue-grey surfaces,
+// a restrained cyan-blue accent, high-contrast text. The canvas stays dark so
+// imagery remains the visual focus; panels recede instead of competing.
 constexpr Palette kCool{
-    "#E6EAF0", "#F4F7FA", "#FFFFFF", "#252B33", "#323A44", "#E6ECF3", "#CFD8E3",
-    "#AEBBC9", "#1B2430", "#526172", "#7C8B9C", "#A5B1BE", "#2E6FB7", "#3C82CC",
-    "#235A9C", "#E2EEFA", "#1B4E86", "#A9781A", "#B2413A", "#3F7A54", "#2F7E8C",
-    "#222932", "#F2F6FA", "#EAF0F6", "#DCE5EF", "#FFFFFF", "#344154", "#DCEAF8",
-    "#9CC2E8", "#7C8896"};
+    /*base*/ "#1E2329", /*panel*/ "#272D35", /*surface*/ "#303741", /*canvas*/ "#14181D",
+    /*canvas2*/ "#1E242B", /*hover*/ "#3A434E", /*line*/ "#3D4651", /*line_strong*/ "#525D6A",
+    /*text*/ "#E4E9EF", /*text_dim*/ "#A8B3C0", /*text_faint*/ "#7E8A98", /*text_ghost*/ "#596471",
+    /*accent*/ "#3D9BE9", /*accent_hover*/ "#54ACEF", /*accent_press*/ "#2E7FC4",
+    /*accent_soft*/ "#1E3D57", /*accent_ink*/ "#DCEEFF", /*warning*/ "#D9A441",
+    /*danger*/ "#D9615A", /*success*/ "#4FA97A", /*info*/ "#42A5C4",
+    /*tooltip_bg*/ "#12161B", /*tooltip_text*/ "#E4E9EF", /*subtle*/ "#2B323B",
+    /*menu_hover*/ "#3A434E", /*menu_bg*/ "#272D35", /*body_text*/ "#D5DDE6",
+    /*selected_bg*/ "#1E3D57", /*selected_border*/ "#3D9BE9", /*shadow*/ "#0B0E12"};
 
 const Palette& palette() { return g_mode == Mode::kWarm ? kWarm : kCool; }
 
@@ -77,7 +83,7 @@ QString substitute(QString sheet) {
 
 const char* kSheet = R"(
 QMainWindow, QWidget#Workbench { background: {{base}}; }
-QWidget { color: {{text}}; selection-background-color: #E6CFC0; selection-color: {{text}}; }
+QWidget { color: {{text}}; selection-background-color: {{selected_bg}}; selection-color: {{text}}; }
 
 QToolTip {
   background: {{tooltip_bg}}; color: {{tooltip_text}}; border: 1px solid {{tooltip_bg}}; padding: 5px 8px;
@@ -144,8 +150,8 @@ QPushButton {
   border-radius: 2px; padding: 5px 11px;
 }
 QPushButton:hover { background: {{hover}}; border-color: {{line_strong}}; }
-QPushButton:pressed { background: #EDE6D8; }
-QPushButton:checked { background: {{accent_soft}}; border-color: #C98A5E; color: {{accent_ink}}; }
+QPushButton:pressed { background: {{accent_press}}; }
+QPushButton:checked { background: {{accent_soft}}; border-color: {{accent}}; color: {{accent_ink}}; }
 QPushButton:disabled { background: {{subtle}}; border-color: {{line}}; color: {{text_ghost}}; }
 QPushButton#Primary {
   background: {{accent}}; border-color: {{accent_press}}; color: {{surface}}; font-weight: 600;
@@ -160,7 +166,7 @@ QToolButton {
   border-radius: 2px; padding: 4px 7px;
 }
 QToolButton:hover { background: {{hover}}; color: {{text}}; }
-QToolButton:pressed { background: #E4DCCB; }
+QToolButton:pressed { background: {{accent_press}}; }
 QToolButton:checked { background: {{accent_soft}}; border-color: {{selected_border}}; color: {{accent_ink}}; }
 QToolButton::menu-indicator { image: none; width: 0; height: 0; }
 
@@ -172,7 +178,7 @@ QToolButton#RibbonLarge:hover { background: {{hover}}; border-color: {{line}}; }
 QToolButton#RibbonLarge:checked { background: {{accent_soft}}; border-color: {{selected_border}}; color: {{accent_ink}}; }
 QToolButton#RibbonLarge:disabled { color: {{text_ghost}}; }
 
-QFrame#Segmented { background: #EAE4D8; border: 1px solid {{line}}; border-radius: 2px; }
+QFrame#Segmented { background: {{subtle}}; border: 1px solid {{line}}; border-radius: 2px; }
 QFrame#Segmented QToolButton { border: 1px solid transparent; border-radius: 2px; padding: 4px 10px; color: {{text_dim}}; }
 QFrame#Segmented QToolButton:hover { color: {{text}}; background: {{subtle}}; }
 QFrame#Segmented QToolButton:checked { background: {{surface}}; border-color: {{line_strong}}; color: {{text}}; }
@@ -278,6 +284,40 @@ QFrame#ConfigCard {
   border: 1px solid {{line}};
   border-radius: 5px;
 }
+QPushButton#AddStepButton {
+  background: {{subtle}};
+  border: 1px solid {{line_strong}};
+  border-radius: 4px;
+  color: {{body_text}};
+  padding: 5px 10px;
+}
+QPushButton#AddStepButton:hover {
+  background: {{hover}};
+  border-color: {{accent}};
+  color: {{accent_ink}};
+}
+
+/* ---- collapsible inspector sections ------------------------------------ */
+QGroupBox#InspectSection {
+  border: 1px solid {{line}};
+  border-radius: 4px;
+  margin-top: 12px;
+  padding: 2px;
+  background: {{surface}};
+}
+QGroupBox#InspectSection::title {
+  subcontrol-origin: margin;
+  subcontrol-position: top left;
+  padding: 0 6px;
+  color: {{text_dim}};
+  font-size: 11px;
+}
+QGroupBox#InspectSection::indicator {
+  width: 10px; height: 10px;
+  border: 1px solid {{line_strong}};
+  background: {{panel}};
+}
+QGroupBox#InspectSection::indicator:checked { background: {{accent}}; border-color: {{accent}}; }
 QLabel#Meta { color: {{text_dim}}; }
 QTabWidget#TrainTabs::pane { border: none; background: transparent; }
 
@@ -336,7 +376,7 @@ QColor colour(const QString& key) { return colour(key.toUtf8().constData()); }
 
 void set_mode(Mode value) { g_mode = value; }
 Mode mode() { return g_mode; }
-QString mode_name() { return g_mode == Mode::kWarm ? QStringLiteral("暖色") : QStringLiteral("冷色"); }
+QString mode_name() { return g_mode == Mode::kWarm ? QStringLiteral("浅色") : QStringLiteral("深色"); }
 
 QFont ui_font(int pixel_size, int weight) {
   QFont font(QStringLiteral("Microsoft YaHei UI"));
