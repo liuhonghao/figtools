@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(figtools
-  VERSION 1.8.1
+  VERSION 1.9.0
   DESCRIPTION "Image processing workbench: deterministic pipelines, operator registry, CLI"
   HOMEPAGE_URL "https://github.com/liuhonghao/figtools"
   LANGUAGES CXX
@@ -58,6 +58,7 @@ add_library(ft_io STATIC
   src/io/stb_codec.cpp
   src/io/path.cpp
   src/io/image_io.cpp
+  src/io/tiling.cpp
 )
 target_include_directories(ft_io PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>

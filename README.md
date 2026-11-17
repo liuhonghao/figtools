@@ -30,7 +30,8 @@
 | **v1.6** | Lidar360 风格深色专业界面、顶栏瘦身、密集工具栏、可折叠检查器 | ✅ 可用 |
 | **v1.7** | 精细标注：快捷键、顶点编辑、AI 辅助、自动保存、全流程验证 | ✅ 可用 |
 | **v1.8** | 免模型交互分割：魔棒 + GrabCut，离线标注不依赖任何模型 | ✅ 可用 |
-| v1.9 | C++ ONNX Runtime 推理（免 Python）、长驻训练服务 | 规划中 |
+| **v1.9** | 输入输出层：JPEG 导出、大图分块 tile、序列帧目录打开 | ✅ 可用 |
+| v2.0 | C++ ONNX Runtime 推理（免 Python）、长驻训练服务 | 规划中 |
 | v1.0 | 插件 ABI、批量任务中心、团队模式 | 规划中 |
 
 ![workbench](docs/images/workbench.png)
@@ -75,6 +76,8 @@ python python/smoke_test.py
 loss / 训练精度 / 验证精度；**模型 → 载入模型…** 之后按 `Ctrl+R` 对当前图像推理，
 结果同时出现在右栏和画布上的赤陶色标签里。解释器会自动在 `~/.conda/envs` 中找带 torch 的环境，
 也可用 `FIGTOOLS_PYTHON` 指定。详见 [python/README.md](python/README.md)。
+
+**输入输出**：读取支持 PNG/BMP/PPM/JPEG/WebP/TGA；导出支持 PNG/**JPEG**/BMP/PPM（GUI 导出对话框和 CLI `batch --format jpg` 都可）。`figtools tile <大图> <目录> --size 512 --overlap 64 --format jpg` 把无人机正射影像切成瓦片并生成 `manifest.json` 记录每块坐标。文件菜单「打开序列（文件夹）…」把一个目录的图片全部打开成标签页，配合 `A`/`D` 逐图标注。
 
 **免模型分割**：标注页提供两条不依赖深度学习模型的分割路径，纯 C++ 实现、离线可用、零下载：
 - **魔棒（W）**：单击选中相似连通区域，容差可调（5-100）；适合色差明显的背景/部件。

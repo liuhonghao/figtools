@@ -8,6 +8,7 @@
 
 #include "figtools/core/hash.hpp"
 #include "figtools/io/image_io.hpp"
+#include "figtools/io/tiling.hpp"
 #include "test_framework.hpp"
 #include "test_helpers.hpp"
 
@@ -167,3 +168,16 @@ TEST(jpeg_roundtrip_preserves_dimensions_and_is_lossy_but_readable) {
   std::remove(path.c_str());
 }
 
+
+TEST(tiling_produces_manifest_and_overlap) {
+  const Image image = Image(400, 300, Rgba{120, 130, 140, 255});
+  const auto result = figtools::io::tile_image(image, "tile_out_unit", "big",
+                                                figtools::io::TileSpec{150, 30}, ".png");
+  CHECK(result.rows == 3);
+  CHECK(result.columns == 4);
+  CHECK(result.tiles.size() == 12);
+  CHECK(result.tiles[0].x == 0 && result.tiles[0].y == 0);
+  CHECK(result.tiles[1].x == 120);          // 150 - 30 overlap
+  CHECK(result.tiles[3].width == 40);       // right edge clipped
+  CHECK(result.tiles.back().y + result.tiles.back().height == 300);
+}

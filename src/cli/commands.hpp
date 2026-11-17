@@ -19,6 +19,8 @@ int command_batch(const std::string& input_dir, const std::string& output_dir,
                   const std::string& recipe_path, const std::string& suffix,
                   const std::string& format, bool recursive, bool overwrite, bool as_json);
 int command_demo(const std::string& output_dir, int width, int height, unsigned seed);
+int command_tile(const std::string& input, const std::string& output_dir, int tile_size,
+                 int overlap, const std::string& format, bool as_json);
 int command_version();
 
 }  // namespace figtools::cli

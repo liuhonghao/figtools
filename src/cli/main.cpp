@@ -131,6 +131,17 @@ int main(int argc, char** argv) {
         arguments.has_flag("recursive"), arguments.has_flag("overwrite"),
         arguments.has_flag("json"));
   }
+  if (command == "tile") {
+    if (arguments.positional.size() < 2) {
+      std::fprintf(stderr, "error: tile requires <image> <output-dir>\n");
+      return 1;
+    }
+    const int tile_size = std::max(16, std::stoi(arguments.option("size", "512")));
+    const int overlap = std::max(0, std::stoi(arguments.option("overlap", "0")));
+    return figtools::cli::command_tile(
+        arguments.positional[0], arguments.positional[1], tile_size, overlap,
+        arguments.option("format", "png"), arguments.has_flag("json"));
+  }
   if (command == "demo") {
     const std::string output_dir = arguments.option("o", "demo_out");
     int width = 1200;

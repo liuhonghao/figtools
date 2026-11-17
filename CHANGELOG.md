@@ -3,6 +3,17 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.9.0] - 2026-11-17
+
+### Added
+- **JPEG 导出打通**：核心库早已实现 encode_jpeg，但 GUI 导出过滤器和 CLI
+  `batch --format` 未暴露。现在两者都支持 jpg；批量实测 2 图导出为 DCT JPEG。
+- **大图分块 `figtools tile`**：把超大影像切成 N×N 重叠瓦片（--size/--overlap/
+  --format），生成 manifest.json 记录每块原图坐标（x/y/width/height），便于标注映射回原图。
+  边缘块正确裁剪。`src/io/tiling.cpp` + 单元测试。
+- **序列帧目录打开**：文件菜单新增「打开序列（文件夹）…」，按文件名排序打开目录
+  内全部图片为文档标签，配合 A/D 逐图标注，sidecar 自动保存。
+
 ## [1.8.1] - 2026-11-17
 
 ### Added

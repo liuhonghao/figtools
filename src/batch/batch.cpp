@@ -41,6 +41,8 @@ const char* to_string(OutputFormat format) noexcept {
       return "BMP";
     case OutputFormat::kPpm:
       return "PPM";
+    case OutputFormat::kJpeg:
+      return "JPEG";
     case OutputFormat::kPng:
     default:
       return "PNG";
@@ -53,6 +55,8 @@ const char* extension_of(OutputFormat format) noexcept {
       return ".bmp";
     case OutputFormat::kPpm:
       return ".ppm";
+    case OutputFormat::kJpeg:
+      return ".jpg";
     case OutputFormat::kPng:
     default:
       return ".png";

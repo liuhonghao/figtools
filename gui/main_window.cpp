@@ -11,6 +11,7 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QElapsedTimer>
+#include <QDir>
 #include <QFileDialog>
 #include <QInputDialog>
 #include <QFileInfo>
@@ -75,7 +76,7 @@
 #include "widgets.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.8.1"
+#define FIGTOOLS_VERSION "1.9.0"
 #endif
 
 namespace figtools::gui {
@@ -220,6 +221,29 @@ void MainWindow::buildActions() {
     if (!path.isEmpty()) {
       loadPath(path);
     }
+  });
+  auto* sequence_action = file_menu->addAction(tr("打开序列（文件夹）…"));
+  sequence_action->setToolTip(tr("把一个文件夹里的图片按文件名排序全部打开，逐图标注"));
+  connect(sequence_action, &QAction::triggered, this, [this]() {
+    const QString dir = QFileDialog::getExistingDirectory(
+        this, tr("选择图片序列目录"), last_open_dir_);
+    if (dir.isEmpty()) return;
+    QDir directory(dir);
+    directory.setFilter(QDir::Files | QDir::Readable);
+    directory.setNameFilters({"*.png", "*.bmp", "*.ppm", "*.pgm", "*.jpg", "*.jpeg",
+                              "*.webp", "*.tga"});
+    directory.setSorting(QDir::Name);
+    const QFileInfoList files = directory.entryInfoList();
+    if (files.isEmpty()) {
+      QMessageBox::information(this, tr("打开序列"), tr("目录里没有支持的图片。"));
+      return;
+    }
+    int loaded = 0;
+    for (const QFileInfo& file : files) {
+      if (loadPath(file.absoluteFilePath())) ++loaded;
+    }
+    if (tabs_ != nullptr) tabs_->setCurrentIndex(1);  // jump to annotation page
+    notify(tr("已打开 %1 张图 · 用 A / D 逐图切换，标注自动保存").arg(loaded), 6000);
   });
 
   sample_action_ = file_menu->addAction(tr("载入示例图"));
@@ -2018,7 +2042,7 @@ void MainWindow::exportImage() {
                                               : QFileInfo(source_path_).completeBaseName() +
                                                     QStringLiteral("_processed.png");
   const QString path = QFileDialog::getSaveFileName(
-      this, tr("导出结果"), suggestion, tr("PNG (*.png);;BMP (*.bmp);;PPM (*.ppm)"));
+      this, tr("导出结果"), suggestion, tr("PNG (*.png);;JPEG (*.jpg);;BMP (*.bmp);;PPM (*.ppm)"));
   if (path.isEmpty()) {
     return;
   }

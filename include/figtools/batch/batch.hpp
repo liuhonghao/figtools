@@ -25,6 +25,7 @@ enum class OutputFormat {
   kPng = 0,
   kBmp,
   kPpm,
+  kJpeg,
 };
 
 [[nodiscard]] const char* to_string(OutputFormat format) noexcept;

@@ -4,7 +4,7 @@
 #include "cli/commands.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.8.1"
+#define FIGTOOLS_VERSION "1.9.0"
 #endif
 
 #include <cmath>
@@ -21,6 +21,7 @@
 #include "figtools/core/metrics.hpp"
 #include "figtools/core/sample_scene.hpp"
 #include "figtools/io/image_io.hpp"
+#include "figtools/io/tiling.hpp"
 #include "figtools/ops/registry.hpp"
 #include "figtools/batch/batch.hpp"
 #include "figtools/pipeline/executor.hpp"
@@ -158,9 +159,11 @@ void print_usage() {
       "  compare -a <before> -b <after>        PSNR / SSIM / MAE report\n"
       "        [--json]\n"
       "  batch <in-dir> <out-dir> -r <recipe>  Apply a recipe to every image in a folder\n"
-      "        [--suffix _out] [--format png|bmp|ppm]\n"
+      "        [--suffix _out] [--format png|bmp|ppm|jpg]\n"
       "        [--recursive] [--overwrite] [--json]\n"
       "  demo -o <dir> [--size WxH] [--seed N] Generate a sample scene and run a pipeline\n"
+      "  tile <image> <out-dir> [--size N]     Split a large image into tiles\n"
+      "        [--overlap N] [--format fmt]    (default 512 / 0 / png; writes manifest.json)\n"
       "  version                               Print version\n"
       "  help                                  Show this message\n"
       "\n"
@@ -381,10 +384,12 @@ int command_batch(const std::string& input_dir, const std::string& output_dir,
     options.format = OutputFormat::kBmp;
   } else if (format == "ppm") {
     options.format = OutputFormat::kPpm;
+  } else if (format == "jpg" || format == "jpeg") {
+    options.format = OutputFormat::kJpeg;
   } else if (format.empty() || format == "png") {
     options.format = OutputFormat::kPng;
   } else {
-    std::fprintf(stderr, "error: unknown format '%s' (png, bmp, ppm)\n", format.c_str());
+    std::fprintf(stderr, "error: unknown format '%s' (png, bmp, ppm, jpg)\n", format.c_str());
     return 1;
   }
 
@@ -446,6 +451,58 @@ int command_batch(const std::string& input_dir, const std::string& output_dir,
   std::printf("failed    : %zu\n", summary.failed);
   std::printf("elapsed   : %.1f ms\n", summary.milliseconds);
   return summary.failed == 0 ? 0 : 1;
+}
+
+int command_tile(const std::string& input, const std::string& output_dir, int tile_size,
+                 int overlap, const std::string& format, bool as_json) {
+  auto image = load_image(input);
+  if (!image) {
+    std::fprintf(stderr, "error: %s\n", image.error().message.c_str());
+    return 1;
+  }
+  const std::string ext = (format == "jpg" || format == "jpeg") ? ".jpg"
+                          : format == "bmp" ? ".bmp"
+                          : format == "ppm" ? ".ppm" : ".png";
+  const std::size_t dot = input.find_last_of(".\\/");
+  const std::size_t slash = input.find_last_of("\\/");
+  const std::size_t stem_end = (dot != std::string::npos && slash != std::string::npos && dot > slash)
+                                   ? dot : input.size();
+  const std::string stem = input.substr(slash == std::string::npos ? 0 : slash + 1,
+                                        stem_end - (slash == std::string::npos ? 0 : slash + 1));
+
+  const auto result = figtools::io::tile_image(image.value(), output_dir, stem,
+                                                figtools::io::TileSpec{tile_size, overlap}, ext);
+  if (result.tiles.empty()) {
+    std::fprintf(stderr, "error: no tiles produced\n");
+    return 1;
+  }
+  // manifest.json lets annotation coordinates be mapped back to the source.
+  const std::filesystem::path path = figtools::io::native_path(output_dir);
+  std::error_code ec;
+  std::filesystem::create_directories(path, ec);
+  std::ofstream manifest(path / "manifest.json", std::ios::trunc);
+  if (manifest) {
+    manifest << "{\n  \"source\": \"" << input << "\",\n  \"tile_size\": " << tile_size
+             << ",\n  \"overlap\": " << overlap << ",\n  \"rows\": " << result.rows
+             << ",\n  \"columns\": " << result.columns << ",\n  \"tiles\": [\n";
+    for (std::size_t i = 0; i < result.tiles.size(); ++i) {
+      const auto& t = result.tiles[i];
+      manifest << "    {\"row\": " << t.row << ", \"column\": " << t.column
+               << ", \"x\": " << t.x << ", \"y\": " << t.y
+               << ", \"width\": " << t.width << ", \"height\": " << t.height
+               << ", \"file\": \"" << t.filename << "\"}" << (i + 1 < result.tiles.size() ? "," : "")
+               << "\n";
+    }
+    manifest << "  ]\n}\n";
+  }
+  if (as_json) {
+    std::printf("{\"tiles\": %zu, \"rows\": %d, \"columns\": %d, \"size\": %d, \"overlap\": %d}\n",
+                result.tiles.size(), result.rows, result.columns, tile_size, overlap);
+  } else {
+    std::printf("tiles    : %zu\nrows     : %d\ncolumns  : %d\nsize     : %d\noverlap  : %d\n",
+                result.tiles.size(), result.rows, result.columns, tile_size, overlap);
+  }
+  return 0;
 }
 
 int command_demo(const std::string& output_dir, int width, int height, unsigned seed) {
