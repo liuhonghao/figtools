@@ -80,10 +80,19 @@ class ImageCanvas : public QWidget {
   };
   void setSegments(std::vector<Segment> segments);
   void clearSegments();
+  [[nodiscard]] const std::vector<Segment>& segments() const { return segments_; }
 
   void setStatusCallback(std::function<void(const QString&)> callback);
   void setCursorCallback(std::function<void(QPoint, bool)> callback);
   void setZoomCallback(std::function<void(double)> callback);
+
+ signals:
+  void toolChanged(ImageCanvas::Tool tool);
+  void classShortcut(int index);      // 0-based class index from number keys
+  void saveRequested();
+  void prevImageRequested();
+  void nextImageRequested();
+  void annotationEdited();            // a shape was moved / reshaped
 
  protected:
   void paintEvent(QPaintEvent* event) override;
@@ -91,6 +100,7 @@ class ImageCanvas : public QWidget {
   void mouseMoveEvent(QMouseEvent* event) override;
   void mouseReleaseEvent(QMouseEvent* event) override;
   void mouseDoubleClickEvent(QMouseEvent* event) override;
+  void keyReleaseEvent(QKeyEvent* event) override;
   void wheelEvent(QWheelEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
   void keyPressEvent(QKeyEvent* event) override;
@@ -108,6 +118,14 @@ class ImageCanvas : public QWidget {
   [[nodiscard]] QRectF displayedImageRect() const;
   [[nodiscard]] QPointF toImagePointF(QPointF widget_point) const;
   [[nodiscard]] int hitTest(QPointF image_point) const;
+  struct EditHandle {
+    int annotation = -1;
+    int vertex = -1;      // -1 = move whole shape; else vertex/corner index
+    bool edge = false;    // true when grabbing a polygon edge (insert point)
+  };
+  [[nodiscard]] EditHandle hitHandle(QPointF image_point) const;
+  [[nodiscard]] double screenToImageRadius() const;
+  void applyHandleDrag(const EditHandle& handle, QPointF image_point);
   void rebuildDifference();
   void finishPolygon();
   void finishRect();
@@ -139,6 +157,10 @@ class ImageCanvas : public QWidget {
   QPointF rect_start_;
   QPointF rect_current_;
   std::vector<Point2f> polygon_draft_;
+  EditHandle active_handle_;
+  figtools::Shape drag_original_shape_;
+  bool dragging_handle_ = false;
+  bool space_panning_ = false;
   std::function<void()> annotation_callback_;
 
   std::function<void(const QString&)> status_callback_;

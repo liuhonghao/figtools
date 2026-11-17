@@ -3,6 +3,18 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.7.0] - 2026-11-17
+
+### Added
+- **精细标注系统**（参考 labelme / CVAT）：
+  - 单键快捷键 V/R/C/P/M 切工具、1-9 切类别、Ctrl+S 保存、A/D 切图、Delete 删除。
+  - 顶点级编辑：拖动整体移动、矩形拖角缩放、多边形拖顶点、双击边插入顶点。
+  - AI 辅助标注：分割模型结果一键转多边形标注，归入当前类别。
+  - 标注变更后 1.2 秒自动保存 sidecar（`.annotations.json`），避免丢失。
+  - 类别列表显示数字快捷键；标注页快捷键提示。
+- `scripts/verify_annotation_pipeline.py`：端到端验证标注 → sidecar → 快照 →
+  YOLO 数据 → 训练 → 模型导出（含 ONNX），实测 8 图 16 框 1 轮训练跑通。
+
 ## [1.6.0] - 2026-11-17
 
 ### Changed

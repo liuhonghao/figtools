@@ -98,6 +98,7 @@ class MainWindow : public QMainWindow {
   void toggleSidePanes();
   void openCommandPalette();
   void executeCommand(const QString& id);
+  void segmentsToAnnotations();
   void savePreset();
   void applyPreset();
 
@@ -138,7 +139,7 @@ class MainWindow : public QMainWindow {
   void exportAnnotations(bool coco);
   void saveAnnotations();
   void loadAnnotations();
-  void saveSidecar();
+  void saveSidecar(bool quiet = false);
   void chooseDatasetDirectory();
   void refreshDatasetUi();
   void splitDataset();
@@ -207,6 +208,7 @@ class MainWindow : public QMainWindow {
   QProgressBar* progress_ = nullptr;
   QTimer* preview_timer_ = nullptr;
   QTimer* message_timer_ = nullptr;
+  QTimer* annotate_autosave_ = nullptr;
 
   QAction* open_action_ = nullptr;
   QAction* sample_action_ = nullptr;
@@ -219,6 +221,7 @@ class MainWindow : public QMainWindow {
   QToolButton* redo_button_ = nullptr;
   QToolButton* theme_button_ = nullptr;
   QButtonGroup* mode_group_ = nullptr;
+  QButtonGroup* annotate_tool_group_ = nullptr;
   QStackedWidget* ribbon_stack_ = nullptr;
   QWidget* output_dock_ = nullptr;
   QListWidget* output_log_ = nullptr;

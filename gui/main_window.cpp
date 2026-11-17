@@ -74,7 +74,7 @@
 #include "widgets.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.6.0"
+#define FIGTOOLS_VERSION "1.7.0"
 #endif
 
 namespace figtools::gui {
@@ -158,6 +158,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     restoreGeometry(settings.value(QStringLiteral("window/geometry")).toByteArray());
   }
   last_open_dir_ = settings.value(QStringLiteral("paths/last_open")).toString();
+
+  annotate_autosave_ = new QTimer(this);
+  annotate_autosave_->setSingleShot(true);
+  annotate_autosave_->setInterval(1200);
+  connect(annotate_autosave_, &QTimer::timeout, this, [this]() { saveSidecar(true); });
 
   preview_timer_ = new QTimer(this);
   preview_timer_->setSingleShot(true);
@@ -432,6 +437,44 @@ void MainWindow::buildUi() {
   canvas_ = new ImageCanvas(canvas_view);
   canvas_->setAnnotationSet(&annotations_);
   canvas_->setAnnotationCallback([this]() { refreshAnnotationLists(); });
+  connect(canvas_, &ImageCanvas::toolChanged, this, [this](ImageCanvas::Tool tool) {
+    if (annotate_tool_group_ != nullptr) {
+      int id = 0;
+      switch (tool) {
+        case ImageCanvas::Tool::kRect: id = 1; break;
+        case ImageCanvas::Tool::kPolygon: id = 2; break;
+        case ImageCanvas::Tool::kProbe: id = 3; break;
+        case ImageCanvas::Tool::kMeasure: id = 4; break;
+        default: id = 0; break;
+      }
+      QSignalBlocker blocker(annotate_tool_group_);
+      if (QAbstractButton* button = annotate_tool_group_->button(id)) {
+        button->setChecked(true);
+      }
+    }
+  });
+  connect(canvas_, &ImageCanvas::classShortcut, this, [this](int index) {
+    if (class_list_ != nullptr && index >= 0 && index < class_list_->count()) {
+      class_list_->setCurrentRow(index);
+      canvas_->setFocus();
+    }
+  });
+  connect(canvas_, &ImageCanvas::saveRequested, this, [this]() { saveSidecar(false); });
+  connect(canvas_, &ImageCanvas::annotationEdited, this, [this]() {
+    if (annotate_autosave_ != nullptr && !source_path_.isEmpty()) {
+      annotate_autosave_->start();
+    }
+  });
+  connect(canvas_, &ImageCanvas::prevImageRequested, this, [this]() {
+    const int target = active_document_ - 1;
+    if (target >= 0 && document_tabs_ != nullptr) document_tabs_->setCurrentIndex(target);
+  });
+  connect(canvas_, &ImageCanvas::nextImageRequested, this, [this]() {
+    const int target = active_document_ + 1;
+    if (document_tabs_ != nullptr && target < document_tabs_->count()) {
+      document_tabs_->setCurrentIndex(target);
+    }
+  });
   canvas_->setStatusCallback([this](const QString& text) { notify(text, 1500); });
   canvas_->setZoomCallback([this](double zoom) {
     if (status_zoom_ != nullptr) {
@@ -1151,7 +1194,9 @@ QWidget* MainWindow::buildAnnotatePage(QWidget* parent) {
 
   layout->addWidget(theme::section_label(tr("类别"), page));
   class_list_ = new QListWidget(page);
-  class_list_->setMaximumHeight(128);
+  class_list_->setUniformItemSizes(true);
+  class_list_->setMinimumHeight(108);
+  class_list_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   class_list_->setIconSize(QSize(9, 9));
   layout->addWidget(class_list_);
 
@@ -1161,6 +1206,7 @@ QWidget* MainWindow::buildAnnotatePage(QWidget* parent) {
   QHBoxLayout* tool_layout = nullptr;
   auto* tool_frame = segmented(page, &tool_layout);
   auto* tool_group = new QButtonGroup(tool_frame);
+  annotate_tool_group_ = tool_group;
   tool_group->setExclusive(true);
   const QStringList tool_names{tr("选择"), tr("矩形"), tr("多边形"), tr("取色"), tr("测距")};
   for (int i = 0; i < tool_names.size(); ++i) {
@@ -1183,6 +1229,12 @@ QWidget* MainWindow::buildAnnotatePage(QWidget* parent) {
   shape_list_ = new QListWidget(page);
   layout->addWidget(shape_list_, 1);
 
+  auto* ai_button = new QPushButton(tr("分割结果 → 标注"), page);
+  ai_button->setObjectName(QStringLiteral("Primary"));
+  ai_button->setToolTip(tr("把当前分割模型的实例结果转为可编辑多边形标注（使用当前类别）"));
+  connect(ai_button, &QPushButton::clicked, this, &MainWindow::segmentsToAnnotations);
+  layout->addWidget(ai_button);
+
   auto* export_row = new QHBoxLayout();
   export_row->setSpacing(6);
   auto* coco_button = new QPushButton(tr("COCO"), page);
@@ -1203,7 +1255,10 @@ QWidget* MainWindow::buildAnnotatePage(QWidget* parent) {
   sidecar->setToolTip(tr("写到图片旁边（.annotations.json），数据集扫描会自动识别"));
   layout->addWidget(sidecar);
 
-  auto* hint = new QLabel(tr("矩形拖拽绘制；多边形逐点单击，双击或回车闭合，Esc 取消。"), page);
+  auto* hint = new QLabel(
+      tr("快捷键：V 选择 · R 矩形 · C 多边形 · P 取色 · M 测距 · 1-9 切类别 · "
+         "拖动移动/改形 · 双击边加点 · Delete 删除 · Ctrl+S 保存 · A/D 切图 · Esc 取消"),
+      page);
   hint->setObjectName(QStringLiteral("Hint"));
   hint->setWordWrap(true);
   hint->setFont(theme::ui_font(11));
@@ -1222,6 +1277,7 @@ QWidget* MainWindow::buildAnnotatePage(QWidget* parent) {
     if (canvas_ == nullptr) {
       return;
     }
+    canvas_->setFocus();  // keep single-key shortcuts alive after clicking a tool
     switch (id) {
       case 1: canvas_->setTool(ImageCanvas::Tool::kRect); break;
       case 2: canvas_->setTool(ImageCanvas::Tool::kPolygon); break;
@@ -2096,8 +2152,11 @@ void MainWindow::rebuildClassList() {
   for (const LabelClass& label : annotations_.classes()) {
     QPixmap swatch(9, 9);
     swatch.fill(QColor(QString::fromStdString(label.color)));
-    auto* item = new QListWidgetItem(QIcon(swatch), QString::fromStdString(label.name),
-                                     class_list_);
+    const int row = class_list_->count();
+    const QString name = row < 10 ? QStringLiteral("%1  %2").arg(row + 1).arg(QString::fromStdString(label.name))
+                                  : QString::fromStdString(label.name);
+    auto* item = new QListWidgetItem(QIcon(swatch), name, class_list_);
+    item->setSizeHint(QSize(10, 24));
     item->setData(Qt::UserRole, label.id);
   }
   if (class_list_->count() > 0) {
@@ -2244,10 +2303,46 @@ void MainWindow::addDemoAnnotations() {
   refreshAnnotationLists();
 }
 
-void MainWindow::saveSidecar() {
+void MainWindow::segmentsToAnnotations() {
+  if (canvas_ == nullptr) {
+    return;
+  }
+  const auto& segments = canvas_->segments();
+  if (segments.empty()) {
+    QMessageBox::information(this, tr("AI 辅助标注"),
+                             tr("当前没有分割结果。请先用「模型 → 分割当前图像」运行分割模型。"));
+    return;
+  }
+  annotations_.set_image_size(static_cast<int>(source_.width()),
+                              static_cast<int>(source_.height()));
+  int added = 0;
+  for (const ImageCanvas::Segment& segment : segments) {
+    if (segment.polygon.size() < 3) continue;
+    Annotation annotation;
+    annotation.class_id = active_class_;
+    annotation.confidence = static_cast<float>(segment.confidence);
+    annotation.shape.type = ShapeType::kPolygon;
+    annotation.shape.points.reserve(segment.polygon.size());
+    for (const QPointF& point : segment.polygon) {
+      // Segmentation polygons are in result-image pixel coordinates, which is
+      // the same space annotations live in.
+      annotation.shape.points.push_back(
+          Point2f{static_cast<float>(point.x()), static_cast<float>(point.y())});
+    }
+    annotations_.add(std::move(annotation));
+    ++added;
+  }
+  refreshAnnotationLists();
+  saveSidecar();
+  notify(tr("已把 %1 个分割实例转为标注并写入数据集").arg(added), 5000);
+}
+
+void MainWindow::saveSidecar(bool quiet) {
   if (source_path_.isEmpty()) {
-    QMessageBox::information(this, tr("无法保存"),
-                             tr("示例图没有磁盘路径。请先打开一张真实图片再保存标注。"));
+    if (!quiet) {
+      QMessageBox::information(this, tr("无法保存"),
+                               tr("示例图没有磁盘路径。请先打开一张真实图片再保存标注。"));
+    }
     return;
   }
   const QString path = source_path_ + QStringLiteral(".annotations.json");
@@ -2258,7 +2353,11 @@ void MainWindow::saveSidecar() {
   }
   const std::string text = annotations_.to_json(2);
   file.write(text.data(), static_cast<qint64>(text.size()));
-  notify(tr("已写入数据集标注：%1").arg(QFileInfo(path).fileName()), 5000);
+  if (!quiet) {
+    notify(tr("已写入数据集标注：%1").arg(QFileInfo(path).fileName()), 5000);
+  } else if (status_file_ != nullptr) {
+    status_file_->setText(QFileInfo(source_path_).fileName() + QStringLiteral(" •"));
+  }
 }
 
 // ---------------------------------------------------------------------------

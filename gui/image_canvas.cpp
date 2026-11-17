@@ -428,6 +428,130 @@ int ImageCanvas::hitTest(QPointF image_point) const {
   return -1;
 }
 
+double ImageCanvas::screenToImageRadius() const {
+  const QRectF target = displayedImageRect();
+  if (target.isEmpty() || after_.isNull()) {
+    return 4.0;
+  }
+  const double sx = target.width() / static_cast<double>(after_.width());
+  const double sy = target.height() / static_cast<double>(after_.height());
+  const double scale = std::min(sx, sy);
+  return scale > 1e-6 ? 7.0 / scale : 1e6;
+}
+
+ImageCanvas::EditHandle ImageCanvas::hitHandle(QPointF image_point) const {
+  EditHandle result;
+  if (annotations_ == nullptr || selected_ < 0 ||
+      selected_ >= static_cast<int>(annotations_->items().size())) {
+    return result;
+  }
+  const Annotation& annotation = annotations_->items()[static_cast<std::size_t>(selected_)];
+  const double radius = screenToImageRadius();
+  const auto near = [&](Point2f p) {
+    const double dx = static_cast<double>(p.x) - image_point.x();
+    const double dy = static_cast<double>(p.y) - image_point.y();
+    return dx * dx + dy * dy <= radius * radius;
+  };
+
+  if (annotation.shape.type == ShapeType::kRect) {
+    const RectF& rect = annotation.shape.rect;
+    const Point2f corners[] = {
+        {rect.x, rect.y}, {rect.x + rect.width, rect.y},
+        {rect.x + rect.width, rect.y + rect.height}, {rect.x, rect.y + rect.height}};
+    for (int i = 0; i < 4; ++i) {
+      if (near(corners[i])) {
+        result.annotation = selected_;
+        result.vertex = i;
+        return result;
+      }
+    }
+    result.annotation = selected_;  // inside -> move whole shape
+    return result;
+  }
+
+  const auto& points = annotation.shape.points;
+  for (int i = 0; i < static_cast<int>(points.size()); ++i) {
+    if (near(points[static_cast<std::size_t>(i)])) {
+      result.annotation = selected_;
+      result.vertex = i;
+      return result;
+    }
+  }
+  // Edge grab: used by double-click to insert a new vertex.
+  for (int i = 0; i < static_cast<int>(points.size()); ++i) {
+    const Point2f a = points[static_cast<std::size_t>(i)];
+    const Point2f b = points[static_cast<std::size_t>((i + 1) % points.size())];
+    const double dx = b.x - a.x, dy = b.y - a.y;
+    const double len2 = dx * dx + dy * dy;
+    if (len2 < 1e-6) continue;
+    const double t = std::clamp(((image_point.x() - a.x) * dx + (image_point.y() - a.y) * dy) / len2,
+                                0.0, 1.0);
+    const double px = a.x + t * dx, py = a.y + t * dy;
+    if (std::hypot(px - image_point.x(), py - image_point.y()) <= radius) {
+      result.annotation = selected_;
+      result.vertex = i;
+      result.edge = true;
+      return result;
+    }
+  }
+  if (annotation.shape.contains({static_cast<float>(image_point.x()),
+                                 static_cast<float>(image_point.y())})) {
+    result.annotation = selected_;  // inside polygon -> move whole shape
+  }
+  return result;
+}
+
+void ImageCanvas::applyHandleDrag(const EditHandle& handle, QPointF image_point) {
+  if (annotations_ == nullptr || handle.annotation < 0 ||
+      handle.annotation >= static_cast<int>(annotations_->items().size())) {
+    return;
+  }
+  Shape& shape = annotations_->items()[static_cast<std::size_t>(handle.annotation)].shape;
+  const Point2f now{static_cast<float>(image_point.x()), static_cast<float>(image_point.y())};
+
+  if (shape.type == ShapeType::kRect) {
+    RectF& rect = shape.rect;
+    if (handle.vertex < 0) {  // move whole
+      const float dx = now.x - drag_original_shape_.rect.x;
+      const float dy = now.y - drag_original_shape_.rect.y;
+      rect = drag_original_shape_.rect;
+      rect.x += dx; rect.y += dy;
+      return;
+    }
+    // Corner drag: anchor the opposite corner.
+    const RectF& original = drag_original_shape_.rect;
+    const float left = original.x, top = original.y;
+    const float right = original.x + original.width, bottom = original.y + original.height;
+    float x1 = left, y1 = top, x2 = right, y2 = bottom;
+    switch (handle.vertex) {
+      case 0: x1 = now.x; y1 = now.y; break;
+      case 1: x2 = now.x; y1 = now.y; break;
+      case 2: x2 = now.x; y2 = now.y; break;
+      case 3: x1 = now.x; y2 = now.y; break;
+      default: break;
+    }
+    rect.x = std::min(x1, x2);
+    rect.y = std::min(y1, y2);
+    rect.width = std::abs(x2 - x1);
+    rect.height = std::abs(y2 - y1);
+    return;
+  }
+
+  auto& points = shape.points;
+  if (handle.vertex < 0) {  // move whole polygon
+    const float dx = now.x - drag_original_shape_.points[0].x;
+    const float dy = now.y - drag_original_shape_.points[0].y;
+    for (std::size_t i = 0; i < points.size(); ++i) {
+      points[i].x = drag_original_shape_.points[i].x + dx;
+      points[i].y = drag_original_shape_.points[i].y + dy;
+    }
+    return;
+  }
+  if (handle.vertex < static_cast<int>(points.size())) {
+    points[static_cast<std::size_t>(handle.vertex)] = now;
+  }
+}
+
 void ImageCanvas::drawAnnotations(QPainter& painter) {
   if (!annotations_visible_ || annotations_ == nullptr || after_.isNull()) {
     return;
@@ -773,13 +897,27 @@ void ImageCanvas::mousePressEvent(QMouseEvent* event) {
     return;
   }
 
-  if (annotations_ != nullptr && !after_.isNull()) {
-    const int index = hitTest(toImagePointF(event->position()));
+  if (tool_ == Tool::kNone && annotations_ != nullptr && !after_.isNull()) {
+    const QPointF image_point = toImagePointF(event->position());
+    // First check whether the click grabbed a selected shape's handle.
+    EditHandle handle = hitHandle(image_point);
+    if (handle.annotation >= 0) {
+      selected_ = handle.annotation;
+      active_handle_ = handle;
+      dragging_handle_ = true;
+      drag_original_shape_ = annotations_->items()[static_cast<std::size_t>(selected_)].shape;
+      if (annotation_callback_) annotation_callback_();
+      update();
+      return;
+    }
+    const int index = hitTest(image_point);
     if (index >= 0) {
       selected_ = index;
-      if (annotation_callback_) {
-        annotation_callback_();
-      }
+      // Allow moving a freshly selected shape by dragging immediately.
+      active_handle_ = EditHandle{index, -1, false};
+      dragging_handle_ = true;
+      drag_original_shape_ = annotations_->items()[static_cast<std::size_t>(index)].shape;
+      if (annotation_callback_) annotation_callback_();
       update();
       return;
     }
@@ -797,14 +935,38 @@ void ImageCanvas::mousePressEvent(QMouseEvent* event) {
 }
 
 void ImageCanvas::mouseDoubleClickEvent(QMouseEvent* event) {
-  if (tool_ == Tool::kPolygon && event->button() == Qt::LeftButton) {
+  if (event->button() != Qt::LeftButton) {
+    QWidget::mouseDoubleClickEvent(event);
+    return;
+  }
+  if (tool_ == Tool::kPolygon) {
     finishPolygon();
     return;
+  }
+  // In select mode, double-clicking a polygon edge inserts a vertex there.
+  if (tool_ == Tool::kNone && annotations_ != nullptr && selected_ >= 0) {
+    const QPointF image_point = toImagePointF(event->position());
+    const EditHandle handle = hitHandle(image_point);
+    if (handle.edge && handle.annotation == selected_) {
+      auto& points = annotations_->items()[static_cast<std::size_t>(selected_)].shape.points;
+      points.insert(points.begin() + handle.vertex + 1,
+                    Point2f{static_cast<float>(image_point.x()),
+                            static_cast<float>(image_point.y())});
+      if (annotation_callback_) annotation_callback_();
+      emit annotationEdited();
+      update();
+      return;
+    }
   }
   QWidget::mouseDoubleClickEvent(event);
 }
 
 void ImageCanvas::mouseMoveEvent(QMouseEvent* event) {
+  if (dragging_handle_) {
+    applyHandleDrag(active_handle_, toImagePointF(event->position()));
+    update();
+    return;
+  }
   if (drawing_rect_) {
     rect_current_ = event->position();
     update();
@@ -864,6 +1026,14 @@ void ImageCanvas::mouseMoveEvent(QMouseEvent* event) {
 
 void ImageCanvas::mouseReleaseEvent(QMouseEvent* event) {
   Q_UNUSED(event);
+  if (dragging_handle_) {
+    dragging_handle_ = false;
+    active_handle_ = EditHandle{};
+    if (annotation_callback_) annotation_callback_();
+    emit annotationEdited();
+    setCursor(Qt::CrossCursor);
+    return;
+  }
   if (drawing_rect_) {
     finishRect();
     return;
@@ -874,27 +1044,83 @@ void ImageCanvas::mouseReleaseEvent(QMouseEvent* event) {
 }
 
 void ImageCanvas::keyPressEvent(QKeyEvent* event) {
-  if (event->key() == Qt::Key_Escape) {
+  const int key = event->key();
+  const bool ctrl = event->modifiers() & Qt::ControlModifier;
+
+  // Tool selection (labelme / CVAT style single-key shortcuts).
+  if (!ctrl && (key == Qt::Key_V || key == Qt::Key_Space)) {
+    if (key == Qt::Key_Space) {
+      space_panning_ = true;
+      setCursor(Qt::OpenHandCursor);
+    }
+    setTool(Tool::kNone);
+    emit toolChanged(Tool::kNone);
+    return;
+  }
+  if (!ctrl && key == Qt::Key_R) {
+    setTool(Tool::kRect); emit toolChanged(Tool::kRect); return;
+  }
+  if (!ctrl && key == Qt::Key_C) {
+    setTool(Tool::kPolygon); emit toolChanged(Tool::kPolygon); return;
+  }
+  if (!ctrl && key == Qt::Key_P) {
+    setTool(Tool::kProbe); emit toolChanged(Tool::kProbe); return;
+  }
+  if (!ctrl && key == Qt::Key_M) {
+    setTool(Tool::kMeasure); emit toolChanged(Tool::kMeasure); return;
+  }
+
+  // Number keys select the first ten classes.
+  if (!ctrl && key >= Qt::Key_1 && key <= Qt::Key_9) {
+    emit classShortcut(key - Qt::Key_1);
+    return;
+  }
+  if (!ctrl && key == Qt::Key_0) {
+    emit classShortcut(9);
+    return;
+  }
+
+  if (ctrl && key == Qt::Key_S) {
+    emit saveRequested();
+    return;
+  }
+  if (!ctrl && (key == Qt::Key_A || key == Qt::Key_Left)) {
+    emit prevImageRequested();
+    return;
+  }
+  if (!ctrl && (key == Qt::Key_D || key == Qt::Key_Right)) {
+    emit nextImageRequested();
+    return;
+  }
+  if (key == Qt::Key_Escape) {
     polygon_draft_.clear();
     drawing_rect_ = false;
     selected_ = -1;
     update();
     return;
   }
-  if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+  if (key == Qt::Key_Return || key == Qt::Key_Enter) {
     finishPolygon();
     return;
   }
-  if (event->key() == Qt::Key_Delete && annotations_ != nullptr && selected_ >= 0) {
+  if ((key == Qt::Key_Delete || key == Qt::Key_Backspace) &&
+      annotations_ != nullptr && selected_ >= 0) {
     annotations_->remove_at(static_cast<std::size_t>(selected_));
     selected_ = -1;
-    if (annotation_callback_) {
-      annotation_callback_();
-    }
+    if (annotation_callback_) annotation_callback_();
+    emit annotationEdited();
     update();
     return;
   }
   QWidget::keyPressEvent(event);
+}
+
+void ImageCanvas::keyReleaseEvent(QKeyEvent* event) {
+  if (event->key() == Qt::Key_Space) {
+    space_panning_ = false;
+    setCursor(tool_ == Tool::kNone ? Qt::CrossCursor : Qt::CrossCursor);
+  }
+  QWidget::keyReleaseEvent(event);
 }
 
 void ImageCanvas::wheelEvent(QWheelEvent* event) {
