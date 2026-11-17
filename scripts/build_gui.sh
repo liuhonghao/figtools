@@ -48,7 +48,7 @@ echo "==> compile and link"
   -I"$QT_ROOT/include" -I"$QT_ROOT/include/QtCore" \
   -I"$QT_ROOT/include/QtGui" -I"$QT_ROOT/include/QtWidgets" \
   src/core/*.cpp src/io/*.cpp src/ops/*.cpp src/json/*.cpp \
-  src/annotate/*.cpp src/dataset/*.cpp src/batch/*.cpp src/pipeline/*.cpp \
+  src/annotate/*.cpp src/dataset/*.cpp src/batch/*.cpp src/pipeline/*.cpp src/segment/*.cpp \
   gui/*.cpp "$OUT_DIR"/moc_*.cpp \
   -L"$QT_ROOT/lib" -lQt6Widgets -lQt6Gui -lQt6Core -lz \
   -o "$OUT_DIR/figtools_gui.exe"

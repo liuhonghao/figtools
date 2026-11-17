@@ -3,6 +3,18 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.8.0] - 2026-11-17
+
+### Added
+- **免模型交互分割**（`src/segment/interactive.hpp`，纯 C++ 无 OpenCV）：
+  - 魔棒：BFS 区域生长 + RGB 容差阈值，单击选区。
+  - GrabCut：前景/背景 GMM（各3高斯）+ Dinic 最大流最小割，框选抠图；
+    工作分辨率上限 256px 保证交互流畅，结果映射回原尺寸。
+  - mask_to_polygon：Moore 邻域轮廓跟踪 + RDP 简化，直接产出标注多边形。
+  - 画布半透明预览 + 顶点句柄；W/G 快捷键；容差滑块；应用/取消。
+  - 与现有标注编辑、AI 分割、sidecar 自动保存、YOLO 导出无缝汇合。
+- 5 项分割单元测试（魔棒分区、容差、连通域/轮廓、GrabCut 抠块、边界情形）。
+
 ## [1.7.0] - 2026-11-17
 
 ### Added

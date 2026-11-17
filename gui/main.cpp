@@ -16,7 +16,7 @@
 #include "theme.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.7.0"
+#define FIGTOOLS_VERSION "1.8.0"
 #endif
 
 int main(int argc, char** argv) {
@@ -187,6 +187,17 @@ int main(int argc, char** argv) {
       if (tabs != nullptr && page >= 0 && page < tabs->count()) {
         tabs->setCurrentIndex(page);
       }
+    });
+  }
+
+  const int seg_index = arguments.indexOf(QStringLiteral("--test-seg"));
+  if (seg_index >= 0 && seg_index + 4 < arguments.size()) {
+    const int tool = arguments.at(seg_index + 1).toInt();
+    const int sx = arguments.at(seg_index + 2).toInt();
+    const int sy = arguments.at(seg_index + 3).toInt();
+    const int sz = arguments.at(seg_index + 4).toInt();
+    QTimer::singleShot(600, &window, [&window, tool, sx, sy, sz]() {
+      window.runInteractiveSegmentation(tool, sx, sy, sz, sz);
     });
   }
 

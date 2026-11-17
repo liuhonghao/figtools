@@ -24,6 +24,7 @@
 
 #include "inference_client.hpp"
 #include "figtools/pipeline/recipe.hpp"
+#include "figtools/segment/interactive.hpp"
 
 class QAction;
 class QAbstractButton;
@@ -34,6 +35,7 @@ class QLabel;
 class QListWidget;
 class QProgressBar;
 class QSpinBox;
+class QSlider;
 class QSplitter;
 class QStackedWidget;
 class QTabWidget;
@@ -99,6 +101,8 @@ class MainWindow : public QMainWindow {
   void openCommandPalette();
   void executeCommand(const QString& id);
   void segmentsToAnnotations();
+  void applySegmentationPreview();
+  void runInteractiveSegmentation(int tool, int x, int y, int width, int height);
   void savePreset();
   void applyPreset();
 
@@ -222,6 +226,8 @@ class MainWindow : public QMainWindow {
   QToolButton* theme_button_ = nullptr;
   QButtonGroup* mode_group_ = nullptr;
   QButtonGroup* annotate_tool_group_ = nullptr;
+  QSlider* wand_tolerance_ = nullptr;
+  QLabel* wand_tolerance_value_ = nullptr;
   QStackedWidget* ribbon_stack_ = nullptr;
   QWidget* output_dock_ = nullptr;
   QListWidget* output_log_ = nullptr;

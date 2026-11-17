@@ -4,6 +4,7 @@
 #include "image_canvas.hpp"
 
 #include "theme.hpp"
+#include <algorithm>
 
 #include <QKeyEvent>
 #include <QLinearGradient>
@@ -114,6 +115,16 @@ void ImageCanvas::rebuildDifference() {
       difference_image_.setPixel(x, y, qRgb(r, g, bl));
     }
   }
+}
+
+void ImageCanvas::setSegmentationPreview(const std::vector<QPointF>& polygon) {
+  preview_polygon_ = polygon;
+  update();
+}
+
+void ImageCanvas::clearSegmentationPreview() {
+  preview_polygon_.clear();
+  update();
 }
 
 void ImageCanvas::setStatusCallback(std::function<void(const QString&)> callback) {
@@ -641,6 +652,30 @@ void ImageCanvas::drawAnnotations(QPainter& painter) {
   painter.setRenderHint(QPainter::Antialiasing, false);
 }
 
+void ImageCanvas::drawPreview(QPainter& painter) {
+  if (preview_polygon_.size() < 3) return;
+  const QRectF target = displayedImageRect();
+  if (target.isEmpty() || after_.isNull()) return;
+  const double sx = target.width() / static_cast<double>(after_.width());
+  const double sy = target.height() / static_cast<double>(after_.height());
+  QPolygonF polygon;
+  for (const QPointF& point : preview_polygon_) {
+    polygon << QPointF(target.left() + point.x() * sx, target.top() + point.y() * sy);
+  }
+  QColor accent = theme::colour(theme::kAccent);
+  accent.setAlpha(70);
+  painter.setBrush(accent);
+  painter.setPen(QPen(theme::colour(theme::kAccent), 2.0, Qt::DashLine));
+  painter.drawPolygon(polygon);
+
+  // Vertex handles so the preview reads as an editable proposal.
+  painter.setPen(QPen(theme::colour(theme::kAccent), 1.2));
+  painter.setBrush(theme::colour(theme::kSurface));
+  for (const QPointF& point : polygon) {
+    painter.drawEllipse(point, 3.0, 3.0);
+  }
+}
+
 void ImageCanvas::paintEvent(QPaintEvent* event) {
   Q_UNUSED(event);
   QPainter painter(this);
@@ -748,6 +783,13 @@ void ImageCanvas::paintEvent(QPaintEvent* event) {
   drawAnnotations(painter);
   drawDetections(painter);
   drawSegments(painter);
+  if (drawing_box_) {
+    const QRectF box = QRectF(box_start_, box_current_).normalized();
+    painter.setPen(QPen(theme::colour(theme::kAccent), 1.6, Qt::DashLine));
+    painter.setBrush(QBrush());
+    painter.drawRect(box);
+  }
+  drawPreview(painter);
 
   // Corner chips: dark glass, one accent dot, no drop shadow.
   const auto chip = [&painter](QPointF top_left, const QString& text, const QColor& dot,
@@ -883,6 +925,20 @@ void ImageCanvas::mousePressEvent(QMouseEvent* event) {
     return;
   }
 
+  if (tool_ == Tool::kWand && !after_.isNull()) {
+    const QPointF p = toImagePointF(event->position());
+    if (p.x() >= 0 && p.y() >= 0 && p.x() < after_.width() && p.y() < after_.height()) {
+      emit segmentationRequested(static_cast<int>(Tool::kWand),
+                                 static_cast<int>(p.x()), static_cast<int>(p.y()), 0, 0);
+    }
+    return;
+  }
+  if (tool_ == Tool::kGrabCut && !after_.isNull()) {
+    drawing_box_ = true;
+    box_start_ = event->position();
+    box_current_ = box_start_;
+    return;
+  }
   if (tool_ != Tool::kNone && !after_.isNull()) {
     if (tool_ == Tool::kRect) {
       drawing_rect_ = true;
@@ -962,6 +1018,11 @@ void ImageCanvas::mouseDoubleClickEvent(QMouseEvent* event) {
 }
 
 void ImageCanvas::mouseMoveEvent(QMouseEvent* event) {
+  if (drawing_box_) {
+    box_current_ = event->position();
+    update();
+    return;
+  }
   if (dragging_handle_) {
     applyHandleDrag(active_handle_, toImagePointF(event->position()));
     update();
@@ -1026,6 +1087,19 @@ void ImageCanvas::mouseMoveEvent(QMouseEvent* event) {
 
 void ImageCanvas::mouseReleaseEvent(QMouseEvent* event) {
   Q_UNUSED(event);
+  if (drawing_box_) {
+    drawing_box_ = false;
+    const QPointF a = toImagePointF(box_start_);
+    const QPointF b = toImagePointF(box_current_);
+    const QRectF box = QRectF(a, b).normalized();
+    if (box.width() >= 4 && box.height() >= 4) {
+      emit segmentationRequested(static_cast<int>(Tool::kGrabCut),
+                                 static_cast<int>(box.left()), static_cast<int>(box.top()),
+                                 static_cast<int>(box.width()), static_cast<int>(box.height()));
+    }
+    update();
+    return;
+  }
   if (dragging_handle_) {
     dragging_handle_ = false;
     active_handle_ = EditHandle{};

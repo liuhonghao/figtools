@@ -34,7 +34,7 @@ class ImageCanvas : public QWidget {
 
  public:
   enum class Mode { kSplit, kSide, kResult, kFlicker, kDifference };
-  enum class Tool { kNone, kRect, kPolygon, kProbe, kMeasure };
+  enum class Tool { kNone, kRect, kPolygon, kProbe, kMeasure, kWand, kGrabCut };
 
   explicit ImageCanvas(QWidget* parent = nullptr);
 
@@ -82,6 +82,15 @@ class ImageCanvas : public QWidget {
   void clearSegments();
   [[nodiscard]] const std::vector<Segment>& segments() const { return segments_; }
 
+  // Segmentation preview: a translucent mask drawn over the image while the
+  // user is deciding whether to accept it as an annotation.
+  void setSegmentationPreview(const std::vector<QPointF>& polygon);
+  void clearSegmentationPreview();
+  [[nodiscard]] bool hasSegmentationPreview() const { return !preview_polygon_.empty(); }
+  [[nodiscard]] const std::vector<QPointF>& segmentationPolygon() const { return preview_polygon_; }
+  [[nodiscard]] const QImage& imageForAnnotations() const { return after_; }
+  void setWandTolerance(double tolerance) { wand_tolerance_ = tolerance; }
+
   void setStatusCallback(std::function<void(const QString&)> callback);
   void setCursorCallback(std::function<void(QPoint, bool)> callback);
   void setZoomCallback(std::function<void(double)> callback);
@@ -90,6 +99,7 @@ class ImageCanvas : public QWidget {
   void toolChanged(ImageCanvas::Tool tool);
   void classShortcut(int index);      // 0-based class index from number keys
   void saveRequested();
+  void segmentationRequested(int tool, int x, int y, int width, int height);
   void prevImageRequested();
   void nextImageRequested();
   void annotationEdited();            // a shape was moved / reshaped
@@ -115,6 +125,7 @@ class ImageCanvas : public QWidget {
   void drawAnnotations(QPainter& painter);
   void drawDetections(QPainter& painter);
   void drawSegments(QPainter& painter);
+  void drawPreview(QPainter& painter);
   [[nodiscard]] QRectF displayedImageRect() const;
   [[nodiscard]] QPointF toImagePointF(QPointF widget_point) const;
   [[nodiscard]] int hitTest(QPointF image_point) const;
@@ -171,6 +182,11 @@ class ImageCanvas : public QWidget {
   double inference_confidence_ = -1.0;
   std::vector<Detection> detections_;
   std::vector<Segment> segments_;
+  std::vector<QPointF> preview_polygon_;
+  double wand_tolerance_ = 32.0;
+  QPointF box_start_;
+  QPointF box_current_;
+  bool drawing_box_ = false;
 };
 
 }  // namespace figtools::gui

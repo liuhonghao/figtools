@@ -74,7 +74,7 @@
 #include "widgets.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.7.0"
+#define FIGTOOLS_VERSION "1.8.0"
 #endif
 
 namespace figtools::gui {
@@ -445,6 +445,8 @@ void MainWindow::buildUi() {
         case ImageCanvas::Tool::kPolygon: id = 2; break;
         case ImageCanvas::Tool::kProbe: id = 3; break;
         case ImageCanvas::Tool::kMeasure: id = 4; break;
+        case ImageCanvas::Tool::kWand: id = 5; break;
+        case ImageCanvas::Tool::kGrabCut: id = 6; break;
         default: id = 0; break;
       }
       QSignalBlocker blocker(annotate_tool_group_);
@@ -459,6 +461,8 @@ void MainWindow::buildUi() {
       canvas_->setFocus();
     }
   });
+  connect(canvas_, &ImageCanvas::segmentationRequested, this,
+          &MainWindow::runInteractiveSegmentation);
   connect(canvas_, &ImageCanvas::saveRequested, this, [this]() { saveSidecar(false); });
   connect(canvas_, &ImageCanvas::annotationEdited, this, [this]() {
     if (annotate_autosave_ != nullptr && !source_path_.isEmpty()) {
@@ -1208,7 +1212,7 @@ QWidget* MainWindow::buildAnnotatePage(QWidget* parent) {
   auto* tool_group = new QButtonGroup(tool_frame);
   annotate_tool_group_ = tool_group;
   tool_group->setExclusive(true);
-  const QStringList tool_names{tr("选择"), tr("矩形"), tr("多边形"), tr("取色"), tr("测距")};
+  const QStringList tool_names{tr("选"), tr("矩"), tr("多"), tr("色"), tr("距"), tr("魔"), tr("框")};
   for (int i = 0; i < tool_names.size(); ++i) {
     auto* button = new QToolButton(tool_frame);
     button->setText(tool_names.at(i));
@@ -1228,6 +1232,42 @@ QWidget* MainWindow::buildAnnotatePage(QWidget* parent) {
   layout->addWidget(theme::section_label(tr("标注"), page));
   shape_list_ = new QListWidget(page);
   layout->addWidget(shape_list_, 1);
+
+  // --- model-free interactive segmentation ------------------------------
+  auto* seg_box = new QFrame(page);
+  seg_box->setObjectName(QStringLiteral("ConfigCard"));
+  auto* seg_layout = new QVBoxLayout(seg_box);
+  seg_layout->setContentsMargins(10, 8, 10, 8);
+  seg_layout->setSpacing(6);
+  seg_layout->addWidget(theme::section_label(tr("免模型分割（W 魔棒 / G 框选）"), seg_box));
+  auto* tolerance_row = new QHBoxLayout();
+  tolerance_row->setSpacing(6);
+  tolerance_row->addWidget(new QLabel(tr("容差"), seg_box));
+  wand_tolerance_ = new QSlider(Qt::Horizontal, seg_box);
+  wand_tolerance_->setRange(5, 100);
+  wand_tolerance_->setValue(32);
+  wand_tolerance_value_ = new QLabel(QStringLiteral("32"), seg_box);
+  wand_tolerance_value_->setObjectName(QStringLiteral("Meta"));
+  connect(wand_tolerance_, &QSlider::valueChanged, this, [this](int value) {
+    wand_tolerance_value_->setText(QString::number(value));
+    if (canvas_ != nullptr) canvas_->setWandTolerance(static_cast<double>(value));
+  });
+  tolerance_row->addWidget(wand_tolerance_, 1);
+  tolerance_row->addWidget(wand_tolerance_value_);
+  seg_layout->addLayout(tolerance_row);
+  auto* seg_actions = new QHBoxLayout();
+  seg_actions->setSpacing(6);
+  auto* apply_seg = new QPushButton(tr("应用分割"), seg_box);
+  apply_seg->setObjectName(QStringLiteral("Primary"));
+  connect(apply_seg, &QPushButton::clicked, this, &MainWindow::applySegmentationPreview);
+  auto* cancel_seg = new QPushButton(tr("取消"), seg_box);
+  connect(cancel_seg, &QPushButton::clicked, this, [this]() {
+    if (canvas_ != nullptr) canvas_->clearSegmentationPreview();
+  });
+  seg_actions->addWidget(apply_seg, 1);
+  seg_actions->addWidget(cancel_seg);
+  seg_layout->addLayout(seg_actions);
+  layout->addWidget(seg_box);
 
   auto* ai_button = new QPushButton(tr("分割结果 → 标注"), page);
   ai_button->setObjectName(QStringLiteral("Primary"));
@@ -1283,6 +1323,8 @@ QWidget* MainWindow::buildAnnotatePage(QWidget* parent) {
       case 2: canvas_->setTool(ImageCanvas::Tool::kPolygon); break;
       case 3: canvas_->setTool(ImageCanvas::Tool::kProbe); break;
       case 4: canvas_->setTool(ImageCanvas::Tool::kMeasure); break;
+      case 5: canvas_->setTool(ImageCanvas::Tool::kWand); break;
+      case 6: canvas_->setTool(ImageCanvas::Tool::kGrabCut); break;
       default: canvas_->setTool(ImageCanvas::Tool::kNone); break;
     }
   });
@@ -2301,6 +2343,78 @@ void MainWindow::addDemoAnnotations() {
     canvas_->setSelectedIndex(0);
   }
   refreshAnnotationLists();
+}
+
+void MainWindow::runInteractiveSegmentation(int tool, int x, int y, int width, int height) {
+  if (canvas_ == nullptr || source_.empty()) return;
+  // The canvas displays result_ (preview resolution). Build an ImageView in
+  // the same coordinate space so mask/annotation coordinates line up.
+  const QImage shown = canvas_->imageForAnnotations();
+  if (shown.isNull()) return;
+  figtools::Image working(shown.width(), shown.height());
+  for (int py = 0; py < shown.height(); ++py) {
+    for (int px = 0; px < shown.width(); ++px) {
+      const QRgb c = shown.pixel(px, py);
+      working.set(px, py, figtools::Rgba{static_cast<std::uint8_t>(qRed(c)),
+                                         static_cast<std::uint8_t>(qGreen(c)),
+                                         static_cast<std::uint8_t>(qBlue(c)), 255});
+    }
+  }
+  figtools::segment::Mask mask;
+  if (tool == static_cast<int>(ImageCanvas::Tool::kWand)) {
+    const double tolerance = wand_tolerance_ != nullptr
+                                 ? static_cast<double>(wand_tolerance_->value()) : 32.0;
+    mask = figtools::segment::magic_wand(working.view(), x, y, tolerance);
+  } else {
+    mask = figtools::segment::grabcut(working.view(),
+                                      figtools::RectF{static_cast<float>(x), static_cast<float>(y),
+                                                      static_cast<float>(width),
+                                                      static_cast<float>(height)}, 4);
+  }
+  if (mask.empty() || mask.count() < 4) {
+    canvas_->clearSegmentationPreview();
+    notify(tr("未找到可分区域，试试调整容差或换个位置"), 3000);
+    return;
+  }
+  const auto points = figtools::segment::mask_to_polygon(mask, 2.0);
+  if (points.size() < 3) {
+    canvas_->clearSegmentationPreview();
+    notify(tr("区域轮廓无效"), 3000);
+    return;
+  }
+  std::vector<QPointF> preview;
+  preview.reserve(points.size());
+  for (const auto& p : points) preview.emplace_back(p.x, p.y);
+  canvas_->setSegmentationPreview(preview);
+  notify(tr("分割预览已生成 · 点「应用分割」转为标注，Esc 取消"), 4000);
+}
+
+void MainWindow::applySegmentationPreview() {
+  if (canvas_ == nullptr || !canvas_->hasSegmentationPreview()) {
+    notify(tr("还没有分割预览。先用魔棒点击或框选分割"), 3000);
+    return;
+  }
+  // Preview points are in result-image pixel space, same as annotations.
+  Annotation annotation;
+  annotation.class_id = active_class_;
+  annotation.confidence = 1.0F;
+  annotation.shape.type = ShapeType::kPolygon;
+  // The preview is stored as QPointF; copy through a temporary to avoid a
+  // header dependency on the annotation type inside the canvas.
+  // (Values are plain pixel coordinates.)
+  // Reconstruct via public API: read them back from the canvas polygon.
+  const auto preview = canvas_->segmentationPolygon();
+  annotation.shape.points.reserve(preview.size());
+  for (const QPointF& point : preview) {
+    annotation.shape.points.push_back(
+        Point2f{static_cast<float>(point.x()), static_cast<float>(point.y())});
+  }
+  if (annotation.shape.points.size() < 3) return;
+  annotations_.add(std::move(annotation));
+  canvas_->clearSegmentationPreview();
+  refreshAnnotationLists();
+  if (annotate_autosave_ != nullptr && !source_path_.isEmpty()) annotate_autosave_->start();
+  notify(tr("分割已转为标注"), 3000);
 }
 
 void MainWindow::segmentsToAnnotations() {
