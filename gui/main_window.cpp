@@ -68,13 +68,14 @@
 #include "batch_infer_dialog.hpp"
 #include "image_canvas.hpp"
 #include "python_env.hpp"
+#include "class_manager.hpp"
 #include "command_palette.hpp"
 #include "train_dialog.hpp"
 #include "theme.hpp"
 #include "widgets.hpp"
 
 #ifndef FIGTOOLS_VERSION
-#define FIGTOOLS_VERSION "1.8.0"
+#define FIGTOOLS_VERSION "1.8.1"
 #endif
 
 namespace figtools::gui {
@@ -1203,6 +1204,10 @@ QWidget* MainWindow::buildAnnotatePage(QWidget* parent) {
   class_list_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   class_list_->setIconSize(QSize(9, 9));
   layout->addWidget(class_list_);
+  auto* manage_classes = new QPushButton(tr("管理类别…"), page);
+  manage_classes->setToolTip(tr("添加 / 重命名 / 改色 / 删除部件类别"));
+  connect(manage_classes, &QPushButton::clicked, this, &MainWindow::manageClasses);
+  layout->addWidget(manage_classes);
 
   layout->addSpacing(3);
   layout->addWidget(theme::section_label(tr("工具"), page));
@@ -2417,6 +2422,23 @@ void MainWindow::applySegmentationPreview() {
   notify(tr("分割已转为标注"), 3000);
 }
 
+void MainWindow::manageClasses() {
+  ClassManager dialog(annotations_.classes(), this);
+  if (dialog.exec() != QDialog::Accepted) return;
+  auto classes = dialog.classes();
+  if (classes.empty()) {
+    QMessageBox::information(this, tr("管理类别"), tr("至少保留一个类别。"));
+    return;
+  }
+  annotations_.set_classes(std::move(classes));
+  active_class_ = annotations_.classes().front().id;
+  if (canvas_ != nullptr) canvas_->setActiveClass(active_class_);
+  rebuildClassList();
+  refreshAnnotationLists();
+  if (annotate_autosave_ != nullptr && !source_path_.isEmpty()) annotate_autosave_->start();
+  notify(tr("类别已更新，共 %1 类").arg(static_cast<int>(annotations_.classes().size())), 3000);
+}
+
 void MainWindow::segmentsToAnnotations() {
   if (canvas_ == nullptr) {
     return;
@@ -2734,7 +2756,24 @@ bool MainWindow::loadPath(const QString& path) {
   source_path_ = path;
   last_open_dir_ = QFileInfo(path).absolutePath();
   annotations_.clear();
-  annotations_.set_image_size(0, 0);
+  annotations_.set_image_size(source_.width(), source_.height());
+
+  // Auto-load the sidecar next to this image, if it exists. This is what lets
+  // you annotate a whole folder image-by-image: already-labelled images show
+  // their shapes again when reopened, brand-new ones start empty.
+  const QString sidecar = path + QStringLiteral(".annotations.json");
+  if (QFile::exists(sidecar)) {
+    QFile file(sidecar);
+    if (file.open(QIODevice::ReadOnly)) {
+      const QByteArray bytes = file.readAll();
+      auto parsed = AnnotationSet::from_json(
+          std::string(bytes.constData(), static_cast<std::size_t>(bytes.size())));
+      if (parsed) {
+        annotations_ = std::move(parsed.value());
+        rebuildClassList();
+      }
+    }
+  }
   refreshAnnotationLists();
   setWindowTitle(tr("figtools — %1").arg(QFileInfo(path).fileName()));
   prediction_label_.clear();

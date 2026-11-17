@@ -100,6 +100,7 @@ class MainWindow : public QMainWindow {
   void toggleSidePanes();
   void openCommandPalette();
   void executeCommand(const QString& id);
+  void manageClasses();
   void segmentsToAnnotations();
   void applySegmentationPreview();
   void runInteractiveSegmentation(int tool, int x, int y, int width, int height);
