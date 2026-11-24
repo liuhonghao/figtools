@@ -1,4 +1,4 @@
-# figtools
+# <img src="docs/ui/assets/logo-mark.png" width="30" height="30" alt="figtools logo"> figtools
 
 **图像全流程工作台** —— 确定性图像内核 + Qt 桌面工作台 + 命令行工具，最终形态见 [设计基线](docs/DESIGN.md)。
 
@@ -33,6 +33,23 @@
 | **v1.9** | 输入输出层：JPEG 导出、大图分块 tile、序列帧目录打开 | ✅ 可用 |
 | v2.0 | C++ ONNX Runtime 推理（免 Python）、长驻训练服务 | 规划中 |
 | v1.0 | 插件 ABI、批量任务中心、团队模式 | 规划中 |
+
+## 2026-11 界面更新
+
+新一轮桌面外壳已经落地：48 px 顶栏 + 52 px 工作区模式栏取代 Ribbon，画布成为视觉中心；深 / 浅界面与青瓷、琥珀、靛蓝、紫晶、绯红五套强调色独立切换；属性检查器改为可滚动，输出坞保留 30 / 168 px 折叠。品牌标识同步换成“取景框 + 镜头”矢量标，随强调色实时换色。
+
+![figtools 新版界面（深色）](docs/images/workbench-v2-dark.png)
+
+<details>
+<summary>浅色模式</summary>
+
+![figtools 新版界面（浅色）](docs/images/workbench-v2-light.png)
+
+</details>
+
+*浅色模式、完整品牌板与 Qt 映射：见 [UI 说明](docs/ui/README.md)。*
+
+### 历史截图（v1.x Ribbon 界面）
 
 ![workbench](docs/images/workbench.png)
 
