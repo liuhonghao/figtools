@@ -7,6 +7,7 @@
 #include <QGridLayout>
 #include <QLabel>
 #include <QPainter>
+#include <QPainterPath>
 #include <QVariantAnimation>
 
 #include "theme.hpp"
@@ -56,6 +57,60 @@ void KeyValueList::set_rows(const std::vector<std::pair<QString, QString>>& rows
     grid_->addWidget(value_label, row, 1);
     ++row;
   }
+}
+
+// ---------------------------------------------------------------------------
+// BrandMark
+// ---------------------------------------------------------------------------
+
+BrandMark::BrandMark(QWidget* parent) : QWidget(parent) {
+  setFixedSize(24, 24);
+  setAttribute(Qt::WA_TransparentForMouseEvents, true);
+}
+
+QSize BrandMark::sizeHint() const { return QSize(24, 24); }
+
+void BrandMark::paintEvent(QPaintEvent* event) {
+  Q_UNUSED(event);
+  QPainter painter(this);
+  painter.setRenderHint(QPainter::Antialiasing, true);
+  painter.scale(static_cast<qreal>(width()) / 24.0, static_cast<qreal>(height()) / 24.0);
+
+  const QColor accent = theme::colour(theme::kAccent);
+  QPen pen(accent);
+  pen.setWidthF(2.15);
+  pen.setCapStyle(Qt::RoundCap);
+  pen.setJoinStyle(Qt::RoundJoin);
+  painter.setPen(pen);
+  painter.setBrush(Qt::NoBrush);
+
+  // Four corner brackets: a frame, open enough to read as a viewfinder.
+  QPainterPath frame;
+  frame.moveTo(3, 7.5);
+  frame.lineTo(3, 5.4);
+  frame.quadTo(3, 3, 5.4, 3);
+  frame.lineTo(7.5, 3);
+  frame.moveTo(16.5, 3);
+  frame.lineTo(18.6, 3);
+  frame.quadTo(21, 3, 21, 5.4);
+  frame.lineTo(21, 7.5);
+  frame.moveTo(21, 16.5);
+  frame.lineTo(21, 18.6);
+  frame.quadTo(21, 21, 18.6, 21);
+  frame.lineTo(16.5, 21);
+  frame.moveTo(7.5, 21);
+  frame.lineTo(5.4, 21);
+  frame.quadTo(3, 21, 3, 18.6);
+  frame.lineTo(3, 16.5);
+  painter.drawPath(frame);
+
+  pen.setWidthF(1.85);
+  painter.setPen(pen);
+  painter.drawEllipse(QPointF(12, 12), 3.2, 3.2);
+
+  painter.setPen(Qt::NoPen);
+  painter.setBrush(accent);
+  painter.drawEllipse(QPointF(12, 12), 1.2, 1.2);
 }
 
 // ---------------------------------------------------------------------------

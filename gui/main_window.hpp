@@ -14,6 +14,7 @@
 #include <QTimer>
 #include <QVector>
 
+#include <functional>
 #include <memory>
 
 #include "figtools/annotate/annotation.hpp"
@@ -27,13 +28,16 @@
 #include "figtools/segment/interactive.hpp"
 
 class QAction;
+class QActionGroup;
 class QAbstractButton;
 class QButtonGroup;
 class QDoubleSpinBox;
 class QHBoxLayout;
 class QLabel;
 class QListWidget;
+class QMenu;
 class QProgressBar;
+class QPushButton;
 class QSpinBox;
 class QSlider;
 class QSplitter;
@@ -117,10 +121,17 @@ class MainWindow : public QMainWindow {
   void buildUi();
   void buildTopBar(QVBoxLayout* outer);
   void buildRibbon(QVBoxLayout* outer);
+  void buildModeBar(QVBoxLayout* outer);
   QWidget* buildRibbonPage(int page_index);
   QWidget* buildViewToolbar(QWidget* parent);
   QWidget* buildOutputDock(QWidget* parent);
   void setLeftPage(int index);
+  void setWorkspace(int index);
+  void selectWorkspaceButton(int index);
+  void updateContextActions(int index);
+  void setOutputExpanded(bool expanded);
+  void applyTheme();
+  void setAccent(int index);
   QWidget* buildChainPage(QWidget* parent);
   QWidget* buildAnnotatePage(QWidget* parent);
   QWidget* buildDatasetPage(QWidget* parent);
@@ -225,7 +236,18 @@ class MainWindow : public QMainWindow {
   QToolButton* undo_button_ = nullptr;
   QToolButton* redo_button_ = nullptr;
   QToolButton* theme_button_ = nullptr;
+  QToolButton* accent_button_ = nullptr;
+  QMenu* accent_menu_ = nullptr;
+  QActionGroup* accent_group_ = nullptr;
   QButtonGroup* mode_group_ = nullptr;
+  QButtonGroup* workspace_group_ = nullptr;
+  QHBoxLayout* context_layout_ = nullptr;
+  QWidget* context_widget_ = nullptr;
+  QPushButton* mode_primary_ = nullptr;
+  std::function<void()> mode_primary_action_;
+  QToolButton* output_toggle_ = nullptr;
+  bool output_expanded_ = false;
+  int workspace_index_ = 0;
   QButtonGroup* annotate_tool_group_ = nullptr;
   QSlider* wand_tolerance_ = nullptr;
   QLabel* wand_tolerance_value_ = nullptr;

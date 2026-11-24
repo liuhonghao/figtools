@@ -27,15 +27,27 @@ int main(int argc, char** argv) {
 
   {
     QSettings settings;
-    QString saved = settings.value(QStringLiteral("ui/theme"), QStringLiteral("暖色")).toString();
+    QString saved = settings.value(QStringLiteral("ui/theme"), QStringLiteral("深色")).toString();
     const QStringList args = app.arguments();
     const int theme_index = args.indexOf(QStringLiteral("--theme"));
     if (theme_index >= 0 && theme_index + 1 < args.size()) {
       saved = args.at(theme_index + 1);
     }
-    figtools::gui::theme::set_mode(saved == QStringLiteral("冷色") || saved == QStringLiteral("cool")
+    figtools::gui::theme::set_mode(saved == QStringLiteral("冷色") || saved == QStringLiteral("cool") ||
+                                           saved == QStringLiteral("深色") || saved == QStringLiteral("dark")
                                        ? figtools::gui::theme::Mode::kCool
                                        : figtools::gui::theme::Mode::kWarm);
+
+    int accent_index = settings.value(QStringLiteral("ui/accent"), 0).toInt();
+    const int accent_arg = args.indexOf(QStringLiteral("--accent"));
+    if (accent_arg >= 0 && accent_arg + 1 < args.size()) {
+      accent_index = args.at(accent_arg + 1).toInt();
+    }
+    if (accent_index < 0 || accent_index >= figtools::gui::theme::kAccentCount) {
+      accent_index = 0;
+    }
+    figtools::gui::theme::set_accent(
+        static_cast<figtools::gui::theme::Accent>(accent_index));
   }
   figtools::gui::theme::apply(app);
 

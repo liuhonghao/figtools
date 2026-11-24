@@ -19,7 +19,8 @@
 namespace figtools::gui::theme {
 namespace {
 
-Mode g_mode = Mode::kCool;  // Lidar360-style dark is the default
+Mode g_mode = Mode::kCool;  // graphite chrome is the default
+Accent g_accent = Accent::kTeal;
 
 struct Palette {
   const char* base; const char* panel; const char* surface; const char* canvas;
@@ -33,32 +34,64 @@ struct Palette {
   const char* selected_bg; const char* selected_border; const char* shadow;
 };
 
+// Porcelain chrome. The reference is a precision instrument under neutral
+// daylight: warm paper surfaces, graphite type, and a dark image well.
 constexpr Palette kWarm{
-    "#EAE6DE", "#F7F5F0", "#FFFFFF", "#2A2E2B", "#3A3E39", "#EFEAE0", "#DCD6C9",
-    "#C6BEAE", "#23211C", "#655F53", "#918A7C", "#B7B0A1", "#B4562A", "#C05F31",
-    "#9C4720", "#F5E5D9", "#7A3A16", "#A9781A", "#A33A32", "#4F7A4A", "#3F6E8C",
-    "#2A2823", "#F6F3EC", "#F2EFE8", "#E9E3D7", "#FFFFFF", "#3A372F", "#F4E2D4",
-    "#DDAE8B", "#8A8474"};
+    "#F1EEE8", "#F8F6F1", "#FBFAF7", "#0B0F14", "#161C23", "#F3EFE8", "#DED7CB",
+    "#C9C1B4", "#1B2026", "#56606B", "#8A929C", "#A9A296", "#0E7F77", "#0B6A63",
+    "#08554F", "#E2F1ED", "#073E3B", "#A8741C", "#A33A32", "#2E8B62", "#3B5FA8",
+    "#0B0E12", "#E8EDF2", "#E9E4DB", "#E9E3D7", "#FBFAF7", "#2B333B", "#E2F1ED",
+    "#0E7F77", "#CFC7B9"};
 
-// "Pro" palette: Lidar360-inspired dark chrome. Neutral blue-grey surfaces,
-// a restrained cyan-blue accent, high-contrast text. The canvas stays dark so
-// imagery remains the visual focus; panels recede instead of competing.
+// Graphite chrome. Neutral blue-grey surfaces recede; the central image well
+// is almost black; one accent marks current state and data is left alone.
 constexpr Palette kCool{
-    /*base*/ "#1E2329", /*panel*/ "#272D35", /*surface*/ "#303741", /*canvas*/ "#14181D",
-    /*canvas2*/ "#1E242B", /*hover*/ "#3A434E", /*line*/ "#3D4651", /*line_strong*/ "#525D6A",
-    /*text*/ "#E4E9EF", /*text_dim*/ "#A8B3C0", /*text_faint*/ "#7E8A98", /*text_ghost*/ "#596471",
-    /*accent*/ "#3D9BE9", /*accent_hover*/ "#54ACEF", /*accent_press*/ "#2E7FC4",
-    /*accent_soft*/ "#1E3D57", /*accent_ink*/ "#DCEEFF", /*warning*/ "#D9A441",
-    /*danger*/ "#D9615A", /*success*/ "#4FA97A", /*info*/ "#42A5C4",
-    /*tooltip_bg*/ "#12161B", /*tooltip_text*/ "#E4E9EF", /*subtle*/ "#2B323B",
-    /*menu_hover*/ "#3A434E", /*menu_bg*/ "#272D35", /*body_text*/ "#D5DDE6",
-    /*selected_bg*/ "#1E3D57", /*selected_border*/ "#3D9BE9", /*shadow*/ "#0B0E12"};
+    /*base*/ "#0B0E12", /*panel*/ "#0F141A", /*surface*/ "#141920", /*canvas*/ "#07090C",
+    /*canvas2*/ "#0E1217", /*hover*/ "#1A212A", /*line*/ "#27303A", /*line_strong*/ "#35404C",
+    /*text*/ "#E8EDF2", /*text_dim*/ "#A5B0BC", /*text_faint*/ "#7C8894", /*text_ghost*/ "#596471",
+    /*accent*/ "#4FD8C4", /*accent_hover*/ "#6BE4D2", /*accent_press*/ "#2FB6A5",
+    /*accent_soft*/ "#123B37", /*accent_ink*/ "#DFFBF4", /*warning*/ "#E3B45E",
+    /*danger*/ "#E36B6B", /*success*/ "#58C98B", /*info*/ "#7D9BE8",
+    /*tooltip_bg*/ "#05070A", /*tooltip_text*/ "#E8EDF2", /*subtle*/ "#1A212A",
+    /*menu_hover*/ "#222B35", /*menu_bg*/ "#141920", /*body_text*/ "#D7DEE5",
+    /*selected_bg*/ "#123B37", /*selected_border*/ "#4FD8C4", /*shadow*/ "#06080B"};
+
+struct AccentTone {
+  const char* accent; const char* hover; const char* press; const char* soft; const char* ink;
+};
+struct AccentSpec {
+  const char* name;
+  AccentTone dark;
+  AccentTone light;
+};
+
+// Every accent has an explicit dark/light pair. The swatch is the dark value.
+constexpr AccentSpec kAccents[] = {
+    {"青瓷", {"#4FD8C4", "#6BE4D2", "#2FB6A5", "#123B37", "#DFFBF4"},
+             {"#0E7F77", "#0B6A63", "#08554F", "#E2F1ED", "#073E3B"}},
+    {"琥珀", {"#E3B45E", "#F0C778", "#C2923D", "#3A2E18", "#FFF2D8"},
+             {"#A8741C", "#8D6014", "#744E0E", "#F5EAD3", "#4A3408"}},
+    {"靛蓝", {"#7D9BE8", "#98B0F0", "#5E7DC8", "#1C2A44", "#E6EEFF"},
+             {"#3B5FA8", "#314F8D", "#274073", "#E4EAF7", "#1B2C52"}},
+    {"紫晶", {"#B49AE8", "#C7B0F0", "#9278C8", "#2A2140", "#F0E7FF"},
+             {"#6C4FA8", "#5A408E", "#493373", "#ECE6F7", "#35245A"}},
+    {"绯红", {"#E08A9C", "#EDA3B2", "#C26C7E", "#3B2027", "#FFE5EA"},
+             {"#A84E62", "#8F3F52", "#763143", "#F6E4E8", "#5A2230"}},
+};
+
+const AccentSpec& accent_spec(Accent value) {
+  const int index = static_cast<int>(value);
+  if (index < 0 || index >= kAccentCount) {
+    return kAccents[0];
+  }
+  return kAccents[index];
+}
 
 const Palette& palette() { return g_mode == Mode::kWarm ? kWarm : kCool; }
 
 QMap<QString, QString> colour_map() {
   const Palette& p = palette();
-  return QMap<QString, QString>{
+  QMap<QString, QString> values{
       {"base", p.base}, {"panel", p.panel}, {"surface", p.surface}, {"canvas", p.canvas},
       {"canvas2", p.canvas2}, {"hover", p.hover}, {"line", p.line},
       {"line_strong", p.line_strong}, {"text", p.text}, {"text_dim", p.text_dim},
@@ -70,6 +103,17 @@ QMap<QString, QString> colour_map() {
       {"menu_hover", p.menu_hover}, {"menu_bg", p.menu_bg}, {"body_text", p.body_text},
       {"selected_bg", p.selected_bg}, {"selected_border", p.selected_border},
       {"shadow", p.shadow}};
+  const AccentSpec& a = accent_spec(g_accent);
+  const AccentTone& tone = g_mode == Mode::kWarm ? a.light : a.dark;
+  values["accent"] = tone.accent;
+  values["accent_hover"] = tone.hover;
+  values["accent_press"] = tone.press;
+  values["accent_soft"] = tone.soft;
+  values["accent_ink"] = tone.ink;
+  values["selected_bg"] = tone.soft;
+  values["selected_border"] = tone.accent;
+  values["info"] = tone.accent;
+  return values;
 }
 
 QString substitute(QString sheet) {
@@ -86,8 +130,51 @@ QMainWindow, QWidget#Workbench { background: {{base}}; }
 QWidget { color: {{text}}; selection-background-color: {{selected_bg}}; selection-color: {{text}}; }
 
 QToolTip {
-  background: {{tooltip_bg}}; color: {{tooltip_text}}; border: 1px solid {{tooltip_bg}}; padding: 5px 8px;
+  background: {{tooltip_bg}}; color: {{tooltip_text}}; border: 1px solid {{line}}; padding: 5px 8px;
 }
+
+/* ---- application chrome ------------------------------------------------ */
+QWidget#TopBar {
+  background: {{base}};
+  border-bottom: 1px solid {{line}};
+}
+QLabel#Brand { color: {{text}}; font-size: 13px; font-weight: 700; }
+QLabel#BrandSub { color: {{text_faint}}; font-size: 9px; letter-spacing: 1.6px; }
+QLabel#TopStatus { color: {{success}}; font-size: 10px; }
+QToolButton#TopMenu, QToolButton#ThemeAccent, QToolButton#ThemeMode {
+  background: transparent; border: 1px solid transparent; border-radius: 4px;
+  color: {{text_dim}}; padding: 4px 9px; min-height: 26px;
+}
+QToolButton#TopMenu:hover, QToolButton#ThemeAccent:hover, QToolButton#ThemeMode:hover {
+  background: {{hover}}; border-color: {{line}}; color: {{text}};
+}
+QPushButton#SearchButton {
+  background: {{surface}}; border: 1px solid {{line}}; border-radius: 4px;
+  color: {{text_faint}}; padding: 0 12px; min-height: 28px; max-height: 28px;
+  text-align: left;
+}
+QPushButton#SearchButton:hover { border-color: {{line_strong}}; color: {{text_dim}}; }
+
+QWidget#ModeBar {
+  background: {{panel}};
+  border-bottom: 1px solid {{line_strong}};
+}
+QToolButton#WorkspaceTab {
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  border-radius: 0; padding: 0 14px; min-height: 50px;
+  color: {{text_faint}}; font-size: 12px;
+}
+QToolButton#WorkspaceTab:hover { color: {{text}}; background: {{hover}}; }
+QToolButton#WorkspaceTab:checked {
+  color: {{text}}; border-bottom: 2px solid {{accent}}; background: transparent;
+}
+QToolButton#ModeAction {
+  background: transparent; border: 1px solid transparent; border-radius: 4px;
+  color: {{text_dim}}; padding: 4px 9px; min-height: 26px;
+}
+QToolButton#ModeAction:hover { background: {{hover}}; border-color: {{line}}; color: {{text}}; }
+QToolButton#ModeAction:disabled { color: {{text_ghost}}; }
+QWidget#ViewBar { background: {{panel}}; border-bottom: 1px solid {{line}}; }
 
 /* ---- menu ------------------------------------------------------------- */
 QMenuBar { background: {{panel}}; color: {{text_dim}}; padding: 2px 5px; border: none; }
@@ -118,8 +205,6 @@ QLabel#RibbonGroupTitle { color: {{text_faint}}; font-size: 9px; }
 
 /* ---- quick access ----------------------------------------------------- */
 QWidget#QuickBar { background: {{panel}}; border-bottom: 1px solid {{line}}; }
-QLabel#Brand { color: {{text}}; font-size: 13px; font-weight: 700; }
-QLabel#BrandSub { color: {{text_faint}}; font-size: 10px; }
 QLabel#TopMeta { color: {{text_faint}}; font-size: 10px; }
 
 /* ---- docked panels ---------------------------------------------------- */
@@ -127,9 +212,9 @@ QFrame#Panel { background: {{panel}}; }
 QFrame#PanelLeft { background: {{panel}}; border-right: 1px solid {{line_strong}}; }
 QFrame#PanelRight { background: {{panel}}; border-left: 1px solid {{line_strong}}; }
 QFrame#PanelBottom { background: {{panel}}; border-top: 1px solid {{line_strong}}; }
-QWidget#DockTitle { background: {{hover}}; border-bottom: 1px solid {{line}}; }
-QLabel#DockTitleText { color: {{text_dim}}; font-size: 10px; font-weight: 600; }
-QFrame#Card { background: {{surface}}; border: 1px solid {{line}}; border-radius: 2px; }
+QWidget#DockTitle { background: {{panel}}; border-bottom: 1px solid {{line}}; }
+QLabel#DockTitleText { color: {{text_dim}}; font-size: 10px; font-weight: 600; letter-spacing: .6px; }
+QFrame#Card { background: {{surface}}; border: 1px solid {{line}}; border-radius: 4px; }
 QFrame#Card[state="off"] { background: {{subtle}}; border-color: {{line}}; }
 QFrame#Hairline { background: {{line}}; border: none; }
 
@@ -147,7 +232,7 @@ QLabel#Hint { color: {{text_faint}}; font-size: 10px; }
 /* ---- buttons ---------------------------------------------------------- */
 QPushButton {
   background: {{surface}}; color: {{body_text}}; border: 1px solid {{line_strong}};
-  border-radius: 2px; padding: 5px 11px;
+  border-radius: 4px; padding: 4px 11px; min-height: 20px;
 }
 QPushButton:hover { background: {{hover}}; border-color: {{line_strong}}; }
 QPushButton:pressed { background: {{accent_press}}; }
@@ -155,6 +240,7 @@ QPushButton:checked { background: {{accent_soft}}; border-color: {{accent}}; col
 QPushButton:disabled { background: {{subtle}}; border-color: {{line}}; color: {{text_ghost}}; }
 QPushButton#Primary {
   background: {{accent}}; border-color: {{accent_press}}; color: {{surface}}; font-weight: 600;
+  padding: 4px 12px;
 }
 QPushButton#Primary:hover { background: {{accent_hover}}; }
 QPushButton#Primary:pressed { background: {{accent_press}}; }
@@ -163,12 +249,14 @@ QPushButton#Quiet:hover { background: {{hover}}; color: {{text}}; }
 
 QToolButton {
   background: transparent; color: {{text_dim}}; border: 1px solid transparent;
-  border-radius: 2px; padding: 4px 7px;
+  border-radius: 4px; padding: 4px 7px;
 }
 QToolButton:hover { background: {{hover}}; color: {{text}}; }
 QToolButton:pressed { background: {{accent_press}}; }
 QToolButton:checked { background: {{accent_soft}}; border-color: {{selected_border}}; color: {{accent_ink}}; }
 QToolButton::menu-indicator { image: none; width: 0; height: 0; }
+QToolButton#CardMore { padding: 0; color: {{text_faint}}; font-weight: 600; }
+QToolButton#CardMore:hover { color: {{text}}; background: transparent; }
 
 QToolButton#RibbonLarge {
   background: transparent; border: 1px solid transparent; border-radius: 2px;
@@ -178,15 +266,15 @@ QToolButton#RibbonLarge:hover { background: {{hover}}; border-color: {{line}}; }
 QToolButton#RibbonLarge:checked { background: {{accent_soft}}; border-color: {{selected_border}}; color: {{accent_ink}}; }
 QToolButton#RibbonLarge:disabled { color: {{text_ghost}}; }
 
-QFrame#Segmented { background: {{subtle}}; border: 1px solid {{line}}; border-radius: 2px; }
-QFrame#Segmented QToolButton { border: 1px solid transparent; border-radius: 2px; padding: 4px 10px; color: {{text_dim}}; }
-QFrame#Segmented QToolButton:hover { color: {{text}}; background: {{subtle}}; }
-QFrame#Segmented QToolButton:checked { background: {{surface}}; border-color: {{line_strong}}; color: {{text}}; }
+QFrame#Segmented { background: transparent; border: none; }
+QFrame#Segmented QToolButton { border: none; border-radius: 3px; padding: 4px 9px; color: {{text_faint}}; }
+QFrame#Segmented QToolButton:hover { color: {{text}}; background: {{hover}}; }
+QFrame#Segmented QToolButton:checked { background: {{accent_soft}}; color: {{accent_ink}}; }
 
 /* ---- inputs ----------------------------------------------------------- */
 QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit {
-  background: {{surface}}; border: 1px solid {{line_strong}}; border-radius: 2px;
-  padding: 3px 6px; color: {{text}}; min-height: 19px;
+  background: {{surface}}; border: 1px solid {{line_strong}}; border-radius: 4px;
+  padding: 3px 6px; color: {{text}}; min-height: 20px;
 }
 QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover, QLineEdit:hover { border-color: {{line_strong}}; }
 QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QLineEdit:focus { border-color: {{accent}}; }
@@ -222,16 +310,16 @@ QSlider::handle:horizontal:hover { border-width: 2px; }
 QTabWidget::pane { border: none; background: transparent; }
 QTabBar { background: transparent; }
 QTabBar::tab {
-  background: transparent; color: {{text_faint}}; padding: 8px 12px; margin-right: 1px;
+  background: transparent; color: {{text_faint}}; padding: 7px 12px; margin-right: 1px;
   border: none; border-bottom: 2px solid transparent;
 }
 QTabBar::tab:hover { color: {{body_text}}; }
 QTabBar::tab:selected { color: {{text}}; border-bottom: 2px solid {{accent}}; }
 
 QListWidget, QListView, QTreeWidget {
-  background: {{surface}}; border: 1px solid {{line}}; border-radius: 2px; padding: 2px; outline: none;
+  background: {{surface}}; border: 1px solid {{line}}; border-radius: 4px; padding: 2px; outline: none;
 }
-QListWidget::item, QTreeWidget::item { padding: 4px 6px; border-radius: 2px; color: {{body_text}}; }
+QListWidget::item, QTreeWidget::item { padding: 4px 6px; border-radius: 3px; color: {{body_text}}; }
 QListWidget::item:hover, QTreeWidget::item:hover { background: {{subtle}}; }
 QListWidget::item:selected, QTreeWidget::item:selected { background: {{accent_soft}}; color: {{accent_ink}}; }
 QTreeWidget { border: none; }
@@ -259,7 +347,7 @@ QSplitter::handle { background: {{line_strong}}; }
 QSplitter::handle:horizontal { width: 1px; }
 QSplitter::handle:vertical { height: 1px; }
 QSplitter::handle:hover { background: {{accent}}; }
-QStatusBar { background: {{subtle}}; border-top: 1px solid {{line_strong}}; color: {{text_faint}}; }
+QStatusBar { background: {{panel}}; border-top: 1px solid {{line}}; color: {{text_faint}}; }
 QStatusBar::item { border: none; }
 QStatusBar QLabel { color: {{text_faint}}; font-size: 10px; }
 QStatusBar QLabel#StatusValue { color: {{body_text}}; font-family: "Consolas", monospace; font-size: 10px; }
@@ -313,9 +401,10 @@ QGroupBox#InspectSection::title {
   font-size: 11px;
 }
 QGroupBox#InspectSection::indicator {
-  width: 10px; height: 10px;
+  width: 7px; height: 7px;
   border: 1px solid {{line_strong}};
-  background: {{panel}};
+  border-radius: 1px;
+  background: transparent;
 }
 QGroupBox#InspectSection::indicator:checked { background: {{accent}}; border-color: {{accent}}; }
 QLabel#Meta { color: {{text_dim}}; }
@@ -378,6 +467,22 @@ void set_mode(Mode value) { g_mode = value; }
 Mode mode() { return g_mode; }
 QString mode_name() { return g_mode == Mode::kWarm ? QStringLiteral("浅色") : QStringLiteral("深色"); }
 
+void set_accent(Accent value) {
+  const int index = static_cast<int>(value);
+  if (index >= 0 && index < kAccentCount) {
+    g_accent = value;
+  }
+}
+Accent accent() { return g_accent; }
+QString accent_name() { return accent_name(g_accent); }
+QString accent_name(Accent value) {
+  return QString::fromUtf8(accent_spec(value).name);
+}
+QColor accent_colour(Accent value, bool light) {
+  const AccentSpec& spec = accent_spec(value);
+  return QColor(light ? spec.light.accent : spec.dark.accent);
+}
+
 QFont ui_font(int pixel_size, int weight) {
   QFont font(QStringLiteral("Microsoft YaHei UI"));
   if (!QFontDatabase::families().contains(font.family())) {
@@ -415,7 +520,7 @@ void apply(QApplication& app) {
   set_color(palette, QPalette::ButtonText, get("body_text").name().toUtf8().constData());
   set_color(palette, QPalette::BrightText, "#FFFFFF");
   set_color(palette, QPalette::Highlight, get("accent").name().toUtf8().constData());
-  set_color(palette, QPalette::HighlightedText, "#FFFFFF");
+  set_color(palette, QPalette::HighlightedText, get("surface").name().toUtf8().constData());
   set_color(palette, QPalette::Link, get("accent").name().toUtf8().constData());
   set_color(palette, QPalette::PlaceholderText, get("text_ghost").name().toUtf8().constData());
   set_color(palette, QPalette::Light, "#FFFFFF");
@@ -427,7 +532,7 @@ void apply(QApplication& app) {
   palette.setColor(QPalette::Disabled, QPalette::WindowText, colour(kTextGhost));
   palette.setColor(QPalette::Disabled, QPalette::ButtonText, colour(kTextGhost));
   app.setPalette(palette);
-  app.setFont(ui_font(11));
+  app.setFont(ui_font(12));
   app.setStyleSheet(style_sheet());
 }
 

@@ -34,6 +34,18 @@ class KeyValueList : public QWidget {
   QGridLayout* grid_ = nullptr;
 };
 
+// Brand mark: a viewfinder frame around a lens. Drawn rather than loaded from
+// an SVG so it can follow the live accent colour and stay sharp at 16–32 px.
+class BrandMark : public QWidget {
+ public:
+  explicit BrandMark(QWidget* parent = nullptr);
+
+  [[nodiscard]] QSize sizeHint() const override;
+
+ protected:
+  void paintEvent(QPaintEvent* event) override;
+};
+
 // Compact on/off switch. A checkbox reads as "form"; this reads as a control.
 class ToggleSwitch : public QAbstractButton {
   Q_OBJECT

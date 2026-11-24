@@ -1,12 +1,12 @@
 // Copyright 2026 figtools authors
 // SPDX-License-Identifier: MIT
 //
-// Visual language for the desktop shell, with two switchable palettes.
+// Visual language for the desktop shell.
 //
-// A professional inspection workbench in the spirit of LiDAR360 / WolkenVision:
-// calm chrome around a large data view, a Ribbon of grouped commands, a project
-// tree, an inspector and an output dock. Both palettes share the same layout,
-// type scale and control shapes; only colour changes.
+// Two independent axes:
+//   * base mode  -- dark graphite or warm porcelain chrome;
+//   * accent     -- the single colour that marks current / actionable state.
+// The canvas stays dark in both base modes so pixels remain the reference.
 
 #ifndef FIGTOOLS_GUI_THEME_HPP_
 #define FIGTOOLS_GUI_THEME_HPP_
@@ -24,11 +24,20 @@ namespace figtools::gui::theme {
 
 enum class Mode { kWarm, kCool };
 
-// The active palette is process-global. Switching calls apply() again so the
-// QSS and QPalette are rebuilt from the new colours.
+// Accent families. Each one has a dark-chrome and a light-chrome tone so the
+// same "theme colour" still reads correctly after switching base mode.
+enum class Accent { kTeal, kAmber, kIndigo, kViolet, kRose };
+inline constexpr int kAccentCount = 5;
+
 void set_mode(Mode mode);
 [[nodiscard]] Mode mode();
 [[nodiscard]] QString mode_name();
+
+void set_accent(Accent accent);
+[[nodiscard]] Accent accent();
+[[nodiscard]] QString accent_name();
+[[nodiscard]] QString accent_name(Accent accent);
+[[nodiscard]] QColor accent_colour(Accent accent, bool light = false);
 
 // Semantic colour keys. Values are resolved by colour() against the active
 // palette, so callers never hard-code a hex colour.

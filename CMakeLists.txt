@@ -61,6 +61,8 @@ add_library(ft_io STATIC
   src/io/tiling.cpp
 )
 target_include_directories(ft_io PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>
   $<INSTALL_INTERFACE:include>
 )
@@ -75,6 +77,10 @@ add_library(ft_ops STATIC
   src/ops/color_ops.cpp
   src/ops/filter_ops.cpp
   src/ops/registry.cpp
+)
+target_include_directories(ft_ops PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
 target_link_libraries(ft_ops PUBLIC ft_core PRIVATE figtools::warnings)
 add_library(figtools::ops ALIAS ft_ops)
@@ -146,7 +152,8 @@ add_library(figtools::pipeline ALIAS ft_pipeline)
 # CLI
 # ---------------------------------------------------------------------------
 add_executable(figtools src/cli/main.cpp src/cli/commands.cpp)
-target_link_libraries(figtools PRIVATE ft_pipeline figtools::warnings)
+target_include_directories(figtools PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(figtools PRIVATE ft_pipeline ft_batch figtools::warnings)
 target_compile_definitions(figtools PRIVATE FIGTOOLS_VERSION="${PROJECT_VERSION}")
 
 # ---------------------------------------------------------------------------
